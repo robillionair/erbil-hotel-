@@ -1,0 +1,7 @@
+name = "erbil-hotel-operations"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "dist"
+
+[vars]
+VITE_APP_NAME = "Erbil Hotel Citadel Operations"
+VITE_EXCHANGE_RATE_IQD = "1310"

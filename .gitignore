@@ -1,0 +1,9 @@
+node_modules/
+dist/
+extracted_project/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+Thumbs.db
