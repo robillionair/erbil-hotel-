@@ -9,6 +9,7 @@ import { useCitadelStore } from '../../store/useCitadelStore';
 import { useHotelOpsStore } from '../../store/useHotelOpsStore';
 
 const VORTEX_PARTICLE_COUNT = 65000;
+const TRAIL_COUNT = 1200;
 
 export const View4OrbitalVortex: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -31,8 +32,8 @@ export const View4OrbitalVortex: React.FC = () => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#030305');
 
-    const camera = new THREE.PerspectiveCamera(48, width / height, 0.5, 220);
-    camera.position.set(0, 20, 32);
+    const camera = new THREE.PerspectiveCamera(46, width / height, 0.5, 220);
+    camera.position.set(0, 21, 33);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({
@@ -45,8 +46,6 @@ export const View4OrbitalVortex: React.FC = () => {
     container.appendChild(renderer.domElement);
 
     const postProcessor = createCitadelPostProcessor(renderer, scene, camera, width, height);
-    postProcessor.bloomPass.strength = 1.15;
-    postProcessor.bloomPass.radius = 0.62;
 
     const vortexGroup = new THREE.Group();
     scene.add(vortexGroup);
@@ -58,16 +57,16 @@ export const View4OrbitalVortex: React.FC = () => {
     const colors = new Float32Array(VORTEX_PARTICLE_COUNT * 3);
 
     const palette = [
-      new THREE.Color('#00f0ff'), // White-Hot Cyan
-      new THREE.Color('#d4af37'), // Citadel Gold
-      new THREE.Color('#9b4dff'), // Plasma Violet
-      new THREE.Color('#ff1e7a'), // Drift Magenta
+      new THREE.Color('#ff9e2c'), // Citadel Gold-Amber
+      new THREE.Color('#00f0ff'), // Electric Cyan
+      new THREE.Color('#7928ca'), // Deep Violet
+      new THREE.Color('#ff1e7a'), // Crimson
     ];
 
     for (let i = 0; i < VORTEX_PARTICLE_COUNT; i++) {
-      const u = Math.random() * Math.PI * 2; // Major ring angle
-      const v = Math.random() * Math.PI * 2; // Minor tube angle
-      const layer = 0.35 + Math.pow(Math.random(), 0.85) * 1.15;
+      const u = Math.random() * Math.PI * 2;
+      const v = Math.random() * Math.PI * 2;
+      const layer = 0.28 + Math.pow(Math.random(), 0.85) * 1.25;
 
       torusCoords[i * 3 + 0] = u;
       torusCoords[i * 3 + 1] = v;
@@ -80,7 +79,6 @@ export const View4OrbitalVortex: React.FC = () => {
     }
 
     const particleGeo = new THREE.BufferGeometry();
-    // Dummy position attribute required by Three.js; actual position computed in vertex shader from aTorus
     particleGeo.setAttribute('position', new THREE.BufferAttribute(torusCoords, 3));
     particleGeo.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
 
@@ -89,6 +87,7 @@ export const View4OrbitalVortex: React.FC = () => {
         uTime: { value: 0.0 },
         uSlaDrift: { value: 0.15 },
         uPulse: { value: 0.15 },
+        uMouse: { value: new THREE.Vector2(0, 0) },
         uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
       },
       vertexShader: /* glsl */ `
@@ -96,17 +95,17 @@ export const View4OrbitalVortex: React.FC = () => {
         uniform float uTime;
         uniform float uSlaDrift;
         uniform float uPulse;
+        uniform vec2 uMouse;
         uniform float uPixelRatio;
 
         varying vec3 vColor;
         varying float vEnergy;
 
-        // 3D trigonometric curl-noise approximation for GPU toroidal turbulence
         vec3 curlDisplacement(vec3 p, float t, float drift) {
-          float freq = 0.35 + drift * 0.85;
-          float nx = sin(p.y * freq + t * 1.7) - cos(p.z * freq - t * 1.3);
-          float ny = sin(p.z * freq + t * 1.5) - cos(p.x * freq + t * 1.9);
-          float nz = sin(p.x * freq - t * 1.4) - cos(p.y * freq + t * 1.6);
+          float freq = 0.34 + drift * 0.92;
+          float nx = sin(p.y * freq + t * 1.8) - cos(p.z * freq - t * 1.4);
+          float ny = sin(p.z * freq + t * 1.6) - cos(p.x * freq + t * 2.0);
+          float nz = sin(p.x * freq - t * 1.5) - cos(p.y * freq + t * 1.7);
           return vec3(nx, ny, nz);
         }
 
@@ -115,33 +114,35 @@ export const View4OrbitalVortex: React.FC = () => {
           float v0 = position.y;
           float layer = position.z;
 
-          // Angular velocity increases with SLA drift & operational pulses
-          float speed = 0.48 + uSlaDrift * 1.45 + uPulse * 0.65;
-          float u = u0 + uTime * speed * (0.65 + 0.35 / (layer + 0.3));
-          float v = v0 + uTime * (1.35 + uSlaDrift * 2.2) + u * 2.0;
+          float speed = 0.52 + uSlaDrift * 1.55 + uPulse * 0.7;
+          float u = u0 + uTime * speed * (0.68 + 0.32 / (layer + 0.25));
+          float v = v0 + uTime * (1.45 + uSlaDrift * 2.4) + u * 2.0;
 
-          // Major radius R and minor tube radius r with central singularity pinch
-          float majorR = 11.2;
-          float pinch = 0.45 + 0.55 * pow(sin(u * 2.0 + uTime * 0.9) * 0.5 + 0.5, 1.4);
-          float minorR = (1.6 + uSlaDrift * 4.2) * layer * pinch;
+          float majorR = 11.4;
+          float pinch = 0.42 + 0.58 * pow(sin(u * 2.0 + uTime * 0.95) * 0.5 + 0.5, 1.45);
+          float minorR = (1.55 + uSlaDrift * 4.4) * layer * pinch;
 
           vec3 torusPos;
           torusPos.x = (majorR + minorR * cos(v)) * cos(u);
           torusPos.z = (majorR + minorR * cos(v)) * sin(u);
-          torusPos.y = minorR * sin(v) * 0.85;
+          torusPos.y = minorR * sin(v) * 0.88;
 
-          // Add curl-noise spikes when SLA drift or pulse is high
+          // Mouse gravitational attractor offset
+          vec2 mouseWorld = uMouse * 14.0;
+          float distToMouse = length(torusPos.xz - mouseWorld);
+          float mousePull = smoothstep(10.0, 0.0, distToMouse) * 1.85;
+          torusPos.y += mousePull * sin(uTime * 3.0 + distToMouse);
+
           vec3 curl = curlDisplacement(torusPos, uTime, uSlaDrift);
-          float turbulenceAmp = (0.18 + uSlaDrift * 2.6 + uPulse * 1.4) * layer;
+          float turbulenceAmp = (0.2 + uSlaDrift * 2.75 + uPulse * 1.5) * layer;
           vec3 finalPos = torusPos + curl * turbulenceAmp;
 
-          // Blend color toward hot magenta when SLA drift spikes
-          vec3 magentaSpike = vec3(1.0, 0.12, 0.48);
-          vEnergy = clamp(length(curl) * 0.45 * (uSlaDrift + uPulse * 0.5), 0.0, 1.0);
-          vColor = mix(aColor, magentaSpike, vEnergy * uSlaDrift);
+          vec3 crimsonSpike = vec3(1.0, 0.12, 0.48);
+          vEnergy = clamp(length(curl) * 0.48 * (uSlaDrift + uPulse * 0.55) + mousePull * 0.3, 0.0, 1.0);
+          vColor = mix(aColor, crimsonSpike, vEnergy * uSlaDrift);
 
           vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
-          gl_PointSize = (1.55 + vEnergy * 1.6) * uPixelRatio * (28.0 / max(8.0, -mvPosition.z));
+          gl_PointSize = (1.6 + vEnergy * 1.8) * uPixelRatio * (30.0 / max(8.0, -mvPosition.z));
           gl_Position = projectionMatrix * mvPosition;
         }
       `,
@@ -154,9 +155,9 @@ export const View4OrbitalVortex: React.FC = () => {
           float r2 = dot(p, p);
           if (r2 > 1.0) discard;
 
-          float core = exp(-r2 * 3.6);
-          vec3 col = mix(vColor, vec3(1.0, 0.98, 0.95), core * 0.55);
-          gl_FragColor = vec4(col, core * (0.45 + vEnergy * 0.45));
+          float core = exp(-r2 * 3.5);
+          vec3 col = mix(vColor, vec3(1.0, 0.99, 0.95), core * 0.6);
+          gl_FragColor = vec4(col * 1.25, core * (0.48 + vEnergy * 0.45));
         }
       `,
       transparent: true,
@@ -168,26 +169,45 @@ export const View4OrbitalVortex: React.FC = () => {
     vortexGroup.add(vortexPoints);
 
     // -------------------------------------------------------------------------
-    // 2. TOROIDAL MAGNETIC CONTAINMENT LINE SEGMENTS
+    // 2. DYNAMIC LINESEGMENTS VELOCITY TRAILS
     // -------------------------------------------------------------------------
-    const wireGeo = new THREE.TorusGeometry(11.2, 2.4, 16, 72);
-    const wireEdges = new THREE.EdgesGeometry(wireGeo);
-    const wireMat = new THREE.LineBasicMaterial({
-      color: new THREE.Color('#303854'),
-      transparent: true,
-      opacity: 0.25,
-    });
-    const wireCage = new THREE.LineSegments(wireEdges, wireMat);
-    wireCage.rotation.x = Math.PI / 2;
-    vortexGroup.add(wireCage);
-    wireGeo.dispose();
+    const trailPositions = new Float32Array(TRAIL_COUNT * 6);
+    const trailColors = new Float32Array(TRAIL_COUNT * 6);
+    const trailAngles = new Float32Array(TRAIL_COUNT * 3);
 
-    // Pointer camera orbit
+    for (let i = 0; i < TRAIL_COUNT; i++) {
+      trailAngles[i * 3 + 0] = Math.random() * Math.PI * 2;
+      trailAngles[i * 3 + 1] = Math.random() * Math.PI * 2;
+      trailAngles[i * 3 + 2] = 0.6 + Math.random() * 1.2;
+
+      const c = palette[i % palette.length];
+      trailColors[i * 6 + 0] = c.r;
+      trailColors[i * 6 + 1] = c.g;
+      trailColors[i * 6 + 2] = c.b;
+      trailColors[i * 6 + 3] = c.r * 0.1;
+      trailColors[i * 6 + 4] = c.g * 0.1;
+      trailColors[i * 6 + 5] = c.b * 0.1;
+    }
+
+    const trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+    trailGeo.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
+    const trailMat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.42,
+      blending: THREE.AdditiveBlending,
+    });
+    const trailLines = new THREE.LineSegments(trailGeo, trailMat);
+    vortexGroup.add(trailLines);
+
+    // Camera Orbit + Mouse Attractor
     let isDragging = false;
     let prevX = 0;
     let prevY = 0;
     let yaw = 0.0;
-    let pitch = 0.55;
+    let pitch = 0.56;
+    const mouseVec = new THREE.Vector2(0, 0);
 
     const onDown = (e: PointerEvent) => {
       isDragging = true;
@@ -196,11 +216,14 @@ export const View4OrbitalVortex: React.FC = () => {
       recordInteraction();
     };
     const onMove = (e: PointerEvent) => {
-      if (!isDragging) return;
-      yaw -= (e.clientX - prevX) * 0.006;
-      pitch = Math.max(0.1, Math.min(1.3, pitch + (e.clientY - prevY) * 0.005));
-      prevX = e.clientX;
-      prevY = e.clientY;
+      mouseVec.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseVec.y = (e.clientY / window.innerHeight) * 2 - 1;
+      if (isDragging) {
+        yaw -= (e.clientX - prevX) * 0.006;
+        pitch = Math.max(0.12, Math.min(1.3, pitch + (e.clientY - prevY) * 0.005));
+        prevX = e.clientX;
+        prevY = e.clientY;
+      }
       recordInteraction();
     };
     const onUp = () => {
@@ -258,8 +281,34 @@ export const View4OrbitalVortex: React.FC = () => {
       vortexShaderMat.uniforms.uTime.value = elapsedSec;
       vortexShaderMat.uniforms.uSlaDrift.value = snap.slaDriftScore;
       vortexShaderMat.uniforms.uPulse.value = snap.shaderPulseIntensity;
+      vortexShaderMat.uniforms.uMouse.value.copy(mouseVec);
 
-      wireCage.rotation.z = elapsedSec * 0.15;
+      // Update velocity trail segments
+      const posAttr = trailGeo.attributes.position.array as Float32Array;
+      const majorR = 11.4;
+      for (let i = 0; i < TRAIL_COUNT; i++) {
+        const u0 = trailAngles[i * 3 + 0] + elapsedSec * (0.7 + snap.slaDriftScore);
+        const v0 = trailAngles[i * 3 + 1] + elapsedSec * 1.9 + u0 * 2.0;
+        const rTube = 2.2 * trailAngles[i * 3 + 2];
+
+        const xHead = (majorR + rTube * Math.cos(v0)) * Math.cos(u0);
+        const zHead = (majorR + rTube * Math.cos(v0)) * Math.sin(u0);
+        const yHead = rTube * Math.sin(v0) * 0.85;
+
+        const uTail = u0 - 0.11;
+        const vTail = v0 - 0.22;
+        const xTail = (majorR + rTube * Math.cos(vTail)) * Math.cos(uTail);
+        const zTail = (majorR + rTube * Math.cos(vTail)) * Math.sin(uTail);
+        const yTail = rTube * Math.sin(vTail) * 0.85;
+
+        posAttr[i * 6 + 0] = xHead;
+        posAttr[i * 6 + 1] = yHead;
+        posAttr[i * 6 + 2] = zHead;
+        posAttr[i * 6 + 3] = xTail;
+        posAttr[i * 6 + 4] = yTail;
+        posAttr[i * 6 + 5] = zTail;
+      }
+      trailGeo.attributes.position.needsUpdate = true;
 
       postProcessor.update(elapsedSec, snap.shaderPulseIntensity);
     };
@@ -289,7 +338,7 @@ export const View4OrbitalVortex: React.FC = () => {
 
   const stabilizeSlaRipple = () => {
     recordInteraction();
-    triggerShaderPulse(1.1);
+    triggerShaderPulse(1.15);
     const pendingTask = housekeepingTasks[0];
     if (pendingTask) {
       inspectRoomVerdict(pendingTask.roomNumber, 'passed');
@@ -303,7 +352,7 @@ export const View4OrbitalVortex: React.FC = () => {
       roomNumber: '405',
       problemType: 'HVAC / Climate',
       priority: 'high',
-      note: 'Simulated SLA drift spike injected from Vortex Singularity panel.',
+      note: 'SLA drift spike injected from Vortex Singularity telemetry.',
       reportedBy: 'Citadel Singularity Monitor',
     });
   };
@@ -312,16 +361,16 @@ export const View4OrbitalVortex: React.FC = () => {
     <div className="relative w-full h-full bg-[#030305] overflow-hidden select-none">
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Top HUD Telemetry */}
-      <div className="absolute top-3 left-3 pointer-events-none font-mono space-y-1">
-        <div className="text-[9px] tracking-[0.18em] text-[#686875] uppercase">
-          VIEW 04 // ORBITAL VORTEX: SLA DRIFT SINGULARITY (65,000 CURL-NOISE TOROIDAL POINTS + LINESEGMENTS)
+      {/* Top-Left Telemetry Overlay */}
+      <div className="absolute top-20 left-6 pointer-events-none hud-glass rounded-2xl px-4 py-3 space-y-1">
+        <div className="font-mono text-[10px] tracking-[0.2em] text-[#ff9e2c] uppercase">
+          VIEW 04 // ORBITAL VORTEX • 65,000 CURL-NOISE TOROIDAL SINGULARITY
         </div>
-        <div className="flex items-center gap-4 text-[11px] tabular-nums">
+        <div className="flex items-center gap-4 font-mono text-xs tabular-nums">
           <span className="text-[#ff1e7a]">
-            SLA DRIFT SCORE: {telemetry.slaDriftScore.toFixed(3)}
+            SLA DRIFT: <strong>{telemetry.slaDriftScore.toFixed(3)}</strong>
           </span>
-          <span className="text-[#d4af37]">
+          <span className="text-[#ff9e2c]">
             OVERDUE HK: {telemetry.overdueHousekeepingCount}
           </span>
           <span className="text-[#00f0ff]">
@@ -330,19 +379,19 @@ export const View4OrbitalVortex: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Interactive SLA Coherence Control Bar */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-2 font-mono text-[10px]">
+      {/* Bottom Interactive SLA Coherence Pills */}
+      <div className="absolute bottom-36 right-6 flex flex-wrap items-center gap-3 font-mono text-xs">
         <button
           onClick={injectSlaTurbulenceTicket}
-          className="px-3 py-2 bg-[#160610] hover:bg-[#ff1e7a] text-[#ff1e7a] hover:text-white border border-[#ff1e7a] font-bold uppercase tracking-wider transition"
+          className="px-4 py-2.5 rounded-full hud-glass border border-[#ff1e7a]/60 hover:bg-[#ff1e7a] text-[#ff85b3] hover:text-white font-semibold uppercase tracking-wider transition"
         >
-          + INJECT MAINTENANCE SLA RIPPLE ({maintenanceTickets.length} OPEN)
+          + Inject SLA Turbulence ({maintenanceTickets.length} Open)
         </button>
         <button
           onClick={stabilizeSlaRipple}
-          className="px-3 py-2 bg-[#061610] hover:bg-[#00e676] text-[#00e676] hover:text-[#030305] border border-[#00e676] font-bold uppercase tracking-wider transition"
+          className="px-5 py-2.5 rounded-full hud-glass border border-[#00e676]/60 hover:bg-[#00e676] text-[#00e676] hover:text-[#030305] font-semibold uppercase tracking-wider transition"
         >
-          ✓ COMPLETE TURNOVER & STABILIZE LAMINAR FLOW ({housekeepingTasks.length} QUEUED)
+          ✓ Stabilize Laminar Flow ({housekeepingTasks.length} Queued)
         </button>
       </div>
     </div>

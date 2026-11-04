@@ -9,6 +9,38 @@ import { useCitadelStore } from '../../store/useCitadelStore';
 import { useHotelOpsStore, isRoomReady } from '../../store/useHotelOpsStore';
 import { useAuthStore } from '../../store/useAuthStore';
 
+const PARTICLE_COUNT = 20000;
+
+const ProgressRingSvg: React.FC<{ percent: number; color: string }> = ({ percent, color }) => {
+  const radius = 12;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (Math.min(100, Math.max(5, percent)) / 100) * circumference;
+
+  return (
+    <svg className="w-8 h-8 -rotate-90 shrink-0">
+      <circle
+        cx="16"
+        cy="16"
+        r={radius}
+        fill="none"
+        stroke="rgba(255,255,255,0.1)"
+        strokeWidth="2.2"
+      />
+      <circle
+        cx="16"
+        cy="16"
+        r={radius}
+        fill="none"
+        stroke={color}
+        strokeWidth="2.2"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+};
+
 export const View3PipelineStack: React.FC = () => {
   const bgCanvasRef = useRef<HTMLDivElement | null>(null);
   const telemetry = useErbilTelemetry();
@@ -38,8 +70,8 @@ export const View3PipelineStack: React.FC = () => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#030305');
 
-    const camera = new THREE.PerspectiveCamera(50, width / height, 0.5, 200);
-    camera.position.set(0, 2, 34);
+    const camera = new THREE.PerspectiveCamera(48, width / height, 0.5, 220);
+    camera.position.set(0, 2, 36);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({
@@ -52,45 +84,46 @@ export const View3PipelineStack: React.FC = () => {
     container.appendChild(renderer.domElement);
 
     const postProcessor = createCitadelPostProcessor(renderer, scene, camera, width, height);
-    postProcessor.bloomPass.strength = 1.05;
 
-    // 4 Glowing Neon Spline Pipes Linking Workflow Columns [01] -> [02] -> [03] -> [04]
     const splineGroup = new THREE.Group();
     scene.add(splineGroup);
 
+    // 8 Volumetric Neon Spline Conduits weaving through the 4 Holographic Planes
     const splineColors = ['#00f0ff', '#d4af37', '#00e676', '#ff1e7a'];
-    for (let s = 0; s < 4; s++) {
-      const yBase = (s - 1.5) * 4.2;
+    for (let s = 0; s < 8; s++) {
+      const yBase = (s - 3.5) * 2.6;
       const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(-24, yBase, -4),
-        new THREE.Vector3(-8, yBase + (s % 2 === 0 ? 2.5 : -2.5), 1),
-        new THREE.Vector3(8, yBase + (s % 2 === 0 ? -2.5 : 2.5), 1),
-        new THREE.Vector3(24, yBase, -4),
+        new THREE.Vector3(-28, yBase, -6),
+        new THREE.Vector3(-9, yBase + (s % 2 === 0 ? 3.2 : -3.2), 2),
+        new THREE.Vector3(9, yBase + (s % 2 === 0 ? -3.2 : 3.2), 2),
+        new THREE.Vector3(28, yBase, -6),
       ]);
-      const pts = curve.getPoints(90);
+      const pts = curve.getPoints(100);
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       const mat = new THREE.LineBasicMaterial({
-        color: new THREE.Color(splineColors[s]),
+        color: new THREE.Color(splineColors[s % splineColors.length]),
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.36,
+        blending: THREE.AdditiveBlending,
       });
-      const line = new THREE.Line(geo, mat);
-      splineGroup.add(line);
+      splineGroup.add(new THREE.Line(geo, mat));
     }
 
-    // 6,000 Particle Burst Stream Flowing Across the 4 Workflow Columns
-    const particleCount = 6000;
-    const posArr = new Float32Array(particleCount * 3);
-    const colArr = new Float32Array(particleCount * 3);
-    const velArr = new Float32Array(particleCount);
+    // 20,000 Flowing Pipeline Particles
+    const posArr = new Float32Array(PARTICLE_COUNT * 3);
+    const colArr = new Float32Array(PARTICLE_COUNT * 3);
+    const seedArr = new Float32Array(PARTICLE_COUNT * 3);
 
     const cPalette = splineColors.map((hex) => new THREE.Color(hex));
 
-    for (let i = 0; i < particleCount; i++) {
-      posArr[i * 3 + 0] = (Math.random() - 0.5) * 52;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      posArr[i * 3 + 0] = (Math.random() - 0.5) * 58;
       posArr[i * 3 + 1] = (Math.random() - 0.5) * 24;
-      posArr[i * 3 + 2] = (Math.random() - 0.5) * 10 - 2;
-      velArr[i] = 4.5 + Math.random() * 9.0;
+      posArr[i * 3 + 2] = (Math.random() - 0.5) * 14 - 3;
+
+      seedArr[i * 3 + 0] = 4.0 + Math.random() * 10.0; // velocity
+      seedArr[i * 3 + 1] = Math.random() * Math.PI * 2; // wave phase
+      seedArr[i * 3 + 2] = 0.7 + Math.random() * 1.4; // size
 
       const c = cPalette[i % cPalette.length];
       colArr[i * 3 + 0] = c.r;
@@ -100,17 +133,55 @@ export const View3PipelineStack: React.FC = () => {
 
     const partGeo = new THREE.BufferGeometry();
     partGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
-    partGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+    partGeo.setAttribute('aColor', new THREE.BufferAttribute(colArr, 3));
+    partGeo.setAttribute('aSeed', new THREE.BufferAttribute(seedArr, 3));
 
-    const partMat = new THREE.PointsMaterial({
-      size: 0.22,
-      vertexColors: true,
+    const partMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0.0 },
+        uPulse: { value: 0.15 },
+        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
+      },
+      vertexShader: /* glsl */ `
+        attribute vec3 aColor;
+        attribute vec3 aSeed;
+        uniform float uTime;
+        uniform float uPulse;
+        uniform float uPixelRatio;
+
+        varying vec3 vColor;
+
+        void main() {
+          vColor = aColor;
+          float speed = aSeed.x * (1.0 + uPulse * 1.6);
+          float phase = aSeed.y;
+
+          vec3 p = position;
+          p.x = mod(p.x + 29.0 + uTime * speed, 58.0) - 29.0;
+          p.y += sin(p.x * 0.22 + uTime * 1.8 + phase) * 1.35;
+          p.z += cos(p.x * 0.18 + uTime * 1.4 + phase) * 1.2;
+
+          vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+          gl_PointSize = 1.65 * aSeed.z * uPixelRatio * (32.0 / max(10.0, -mvPosition.z));
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec3 vColor;
+        void main() {
+          vec2 p = gl_PointCoord * 2.0 - 1.0;
+          float r2 = dot(p, p);
+          if (r2 > 1.0) discard;
+          float glow = exp(-r2 * 3.5);
+          gl_FragColor = vec4(vColor * 1.25, glow * 0.72);
+        }
+      `,
       transparent: true,
-      opacity: 0.78,
+      depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const partPoints = new THREE.Points(partGeo, partMat);
-    scene.add(partPoints);
+
+    scene.add(new THREE.Points(partGeo, partMat));
 
     let rafId = 0;
     let lastFrameTime = performance.now();
@@ -143,18 +214,8 @@ export const View3PipelineStack: React.FC = () => {
       const snap = computeTelemetrySnapshot();
       const elapsedSec = (now - startTime) * 0.001;
 
-      const positions = partGeo.attributes.position.array as Float32Array;
-      const speedBoost = 1.0 + snap.shaderPulseIntensity * 2.2;
-
-      for (let i = 0; i < particleCount; i++) {
-        let x = positions[i * 3 + 0];
-        x += velArr[i] * dt * speedBoost;
-        if (x > 26) x = -26;
-        positions[i * 3 + 0] = x;
-        positions[i * 3 + 1] += Math.sin(elapsedSec * 2.0 + x * 0.25) * 0.025;
-      }
-      partGeo.attributes.position.needsUpdate = true;
-
+      partMat.uniforms.uTime.value = elapsedSec;
+      partMat.uniforms.uPulse.value = snap.shaderPulseIntensity;
       splineGroup.rotation.x = Math.sin(elapsedSec * 0.5) * 0.08;
 
       postProcessor.update(elapsedSec, snap.shaderPulseIntensity);
@@ -180,7 +241,7 @@ export const View3PipelineStack: React.FC = () => {
     };
   }, []);
 
-  const occupiedList = rooms.filter((r) => r.occupancyStatus === 'occupied').slice(0, 5);
+  const occupiedList = rooms.filter((r) => r.occupancyStatus === 'occupied').slice(0, 4);
   const readyCount = rooms.filter(isRoomReady).length;
 
   return (
@@ -188,267 +249,244 @@ export const View3PipelineStack: React.FC = () => {
       onMouseMove={recordInteraction}
       className="relative w-full h-full bg-[#030305] overflow-hidden select-none"
     >
-      {/* WebGL Neon Spline & Particle Burst Backdrop */}
+      {/* Full-Screen WebGL Volumetric Splines & 20,000 Particle Pipes */}
       <div ref={bgCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
-      {/* Top View Title */}
-      <div className="relative z-10 px-4 pt-3 pb-2 flex items-center justify-between font-mono border-b border-[#16161a] bg-[#030305]/80">
-        <div className="text-[9px] tracking-[0.18em] text-[#686875] uppercase">
-          VIEW 03 // PIPELINE STACK: 2.5D PERSPECTIVE OPERATIONS CARDS (`rotateX(16deg) rotateY(-14deg)`)
-        </div>
-        <div className="text-[10px] text-[#d4af37] tabular-nums">
-          CLICK ANY CARD BUTTON TO ADVANCE LIVE WORKFLOW & TRIGGER SHADER BURST
+      {/* Top View Title Pill */}
+      <div className="absolute top-20 left-6 z-10 pointer-events-none hud-glass rounded-2xl px-4 py-2.5">
+        <div className="font-mono text-[10px] tracking-[0.2em] text-[#d4af37] uppercase">
+          VIEW 03 // PIPELINE STACK • 20,000 PARTICLE PIPES & 3D HOLOGRAPHIC EXECUTION PLANES
         </div>
       </div>
 
-      {/* 4 VERTICAL WORKFLOW COLUMNS WITH 3D PERSPECTIVE TILT */}
+      {/* 4 TILTED 3D HOLOGRAPHIC EXECUTION PLANES */}
       <div
-        className="relative z-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 p-4 h-[calc(100%-36px)] overflow-y-auto"
-        style={{ perspective: '1300px' }}
+        className="relative z-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 px-6 pt-36 pb-36 h-full overflow-y-auto"
+        style={{ perspective: '1400px' }}
       >
-        {/* COLUMN [01]: ARRIVAL & CHECK-IN / IN-HOUSE */}
-        <div className="flex flex-col gap-3">
-          <div className="px-3 py-2 bg-[#040406]/95 border border-[#00f0ff]/60 font-mono flex items-center justify-between">
-            <span className="text-[10px] font-bold text-[#00f0ff] tracking-[0.14em]">
-              [01] ARRIVAL & CHECK-IN
+        {/* PLANE [01]: ARRIVAL & CHECK-IN */}
+        <div className="space-y-3.5">
+          <div className="hud-glass rounded-2xl px-4 py-3 border-t border-[#00f0ff]/50 flex items-center justify-between">
+            <span className="font-mono text-xs font-semibold text-[#00f0ff] tracking-wider">
+              01 // ARRIVAL & IN-HOUSE
             </span>
-            <span className="text-[10px] text-[#00e676] tabular-nums">{readyCount} READY</span>
+            <span className="font-mono text-[11px] text-[#00e676] tabular-nums">
+              {readyCount} Ready
+            </span>
           </div>
 
-          <div className="space-y-3 pr-1">
-            {occupiedList.map((rm) => (
-              <div
-                key={rm.roomNumber}
-                style={{
-                  transform: 'rotateX(16deg) rotateY(-14deg)',
-                  transformStyle: 'preserve-3d',
+          {occupiedList.map((rm) => (
+            <div
+              key={rm.roomNumber}
+              style={{
+                transform: 'rotateX(14deg) rotateY(-12deg)',
+                transformStyle: 'preserve-3d',
+              }}
+              className="rounded-2xl hud-glass p-4 border border-[#00f0ff]/35 hover:border-[#d4af37] transition-all duration-300 space-y-2.5"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-mono text-xs font-bold text-[#00f0ff]">
+                    SUITE {rm.roomNumber}
+                  </div>
+                  <div className="text-sm font-medium text-white truncate max-w-[160px]">
+                    {rm.currentGuestName}
+                  </div>
+                </div>
+                <ProgressRingSvg percent={88} color="#00f0ff" />
+              </div>
+              <div className="font-mono text-[10px] text-white/50">
+                {rm.roomType} • {rm.baseRateIqd.toLocaleString()} IQD
+              </div>
+              <button
+                onClick={() => {
+                  triggerShaderPulse(1.25);
+                  checkOutRoom(rm.roomNumber);
                 }}
-                className="p-3 bg-[#050509]/92 border border-[#00f0ff]/60 hover:border-[#d4af37] transition duration-300 font-mono text-xs"
+                className="w-full py-2 rounded-xl bg-[#00f0ff]/15 hover:bg-[#00f0ff] text-[#00f0ff] hover:text-[#030305] border border-[#00f0ff]/40 font-mono text-[10px] font-semibold uppercase tracking-wider transition"
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-[#00f0ff]">SUITE {rm.roomNumber}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 bg-[#00f0ff]/15 text-[#00f0ff]">
-                    IN HOUSE
-                  </span>
+                Check Out → Turnover
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* PLANE [02]: HOUSEKEEPING TURNOVER */}
+        <div className="space-y-3.5">
+          <div className="hud-glass rounded-2xl px-4 py-3 border-t border-[#d4af37]/50 flex items-center justify-between">
+            <span className="font-mono text-xs font-semibold text-[#d4af37] tracking-wider">
+              02 // HOUSEKEEPING TURNOVER
+            </span>
+            <span className="font-mono text-[11px] text-[#d4af37] tabular-nums">
+              {housekeepingTasks.length} Active
+            </span>
+          </div>
+
+          {housekeepingTasks.slice(0, 4).map((task) => (
+            <div
+              key={task.id}
+              style={{
+                transform: 'rotateX(14deg) rotateY(-12deg)',
+                transformStyle: 'preserve-3d',
+              }}
+              className="rounded-2xl hud-glass p-4 border border-[#d4af37]/35 hover:border-[#00e676] transition-all duration-300 space-y-2.5"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-mono text-xs font-bold text-[#d4af37]">
+                    SUITE {task.roomNumber}
+                  </div>
+                  <div className="text-xs text-white/90">{task.taskType}</div>
                 </div>
-                <div className="text-[11px] text-[#f4f0ea] font-semibold truncate mt-1">
-                  {rm.currentGuestName}
-                </div>
-                <div className="text-[9px] text-[#787885] mt-0.5">
-                  {rm.roomType} // {rm.baseRateIqd.toLocaleString()} IQD ({rm.discountPayPercent}%)
-                </div>
-                {/* SLA Progress Bar */}
-                <div className="w-full h-1 bg-[#14141c] mt-2 overflow-hidden">
-                  <div className="h-full bg-[#00f0ff]" style={{ width: '88%' }} />
-                </div>
+                <ProgressRingSvg
+                  percent={Math.min(100, task.slaMinutesRemaining * 4)}
+                  color="#d4af37"
+                />
+              </div>
+              <div className="font-mono text-[10px] text-white/50">
+                SLA Window: {task.slaMinutesRemaining}m • {task.status}
+              </div>
+              {task.status !== 'awaiting_inspection' ? (
                 <button
                   onClick={() => {
                     triggerShaderPulse(1.2);
-                    checkOutRoom(rm.roomNumber);
+                    markCleaningFinishedAwaitingInspection(task.roomNumber);
                   }}
-                  className="mt-2.5 w-full py-1.5 bg-[#0c141c] hover:bg-[#00f0ff] text-[#00f0ff] hover:text-[#030305] border border-[#00f0ff]/50 text-[9px] font-bold uppercase tracking-wider transition"
+                  className="w-full py-2 rounded-xl bg-[#d4af37]/15 hover:bg-[#d4af37] text-[#d4af37] hover:text-[#030305] border border-[#d4af37]/40 font-mono text-[10px] font-semibold uppercase tracking-wider transition"
                 >
-                  1-CLICK CHECK OUT → TURNOVER
+                  Complete Clean → Inspect
                 </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* COLUMN [02]: HOUSEKEEPING TURNOVER & SUPERVISOR INSPECT */}
-        <div className="flex flex-col gap-3">
-          <div className="px-3 py-2 bg-[#040406]/95 border border-[#d4af37]/60 font-mono flex items-center justify-between">
-            <span className="text-[10px] font-bold text-[#d4af37] tracking-[0.14em]">
-              [02] HOUSEKEEPING TURNOVER
-            </span>
-            <span className="text-[10px] text-[#d4af37] tabular-nums">
-              {housekeepingTasks.length} QUEUED
-            </span>
-          </div>
-
-          <div className="space-y-3 pr-1">
-            {housekeepingTasks.slice(0, 5).map((task) => (
-              <div
-                key={task.id}
-                style={{
-                  transform: 'rotateX(16deg) rotateY(-14deg)',
-                  transformStyle: 'preserve-3d',
-                }}
-                className="p-3 bg-[#050509]/92 border border-[#d4af37]/60 hover:border-[#00e676] transition duration-300 font-mono text-xs"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-[#d4af37]">RM {task.roomNumber}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 bg-[#d4af37]/15 text-[#d4af37] uppercase">
-                    {task.status}
-                  </span>
-                </div>
-                <div className="text-[10px] text-[#f4f0ea] mt-1">{task.taskType}</div>
-                <div className="text-[9px] text-[#787885] mt-0.5">
-                  SLA WINDOW: {task.slaMinutesRemaining} MIN REMAINING
-                </div>
-                <div className="w-full h-1 bg-[#14141c] mt-2 overflow-hidden">
-                  <div
-                    className="h-full bg-[#d4af37]"
-                    style={{ width: `${Math.min(100, task.slaMinutesRemaining * 4)}%` }}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-1.5 mt-2.5">
-                  {task.status !== 'awaiting_inspection' ? (
-                    <button
-                      onClick={() => {
-                        triggerShaderPulse(1.1);
-                        markCleaningFinishedAwaitingInspection(task.roomNumber);
-                      }}
-                      className="col-span-2 py-1.5 bg-[#161208] hover:bg-[#d4af37] text-[#d4af37] hover:text-[#030305] border border-[#d4af37]/60 text-[9px] font-bold uppercase tracking-wider transition"
-                    >
-                      FINISH CLEANING → INSPECT
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => {
-                          triggerShaderPulse(1.25);
-                          inspectRoomVerdict(task.roomNumber, 'passed');
-                        }}
-                        className="py-1.5 bg-[#00e676]/20 hover:bg-[#00e676] text-[#00e676] hover:text-[#030305] border border-[#00e676] text-[9px] font-bold uppercase"
-                      >
-                        ✓ PASS READY
-                      </button>
-                      <button
-                        onClick={() => {
-                          triggerShaderPulse(1.25);
-                          inspectRoomVerdict(task.roomNumber, 'failed');
-                        }}
-                        className="py-1.5 bg-[#ff1e7a]/20 hover:bg-[#ff1e7a] text-[#ff1e7a] hover:text-white border border-[#ff1e7a] text-[9px] font-bold uppercase"
-                      >
-                        ✕ FAIL
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* COLUMN [03]: ROOM SERVICE & DINING */}
-        <div className="flex flex-col gap-3">
-          <div className="px-3 py-2 bg-[#040406]/95 border border-[#00e676]/60 font-mono flex items-center justify-between">
-            <span className="text-[10px] font-bold text-[#00e676] tracking-[0.14em]">
-              [03] ROOM SERVICE & DINING
-            </span>
-            <span className="text-[10px] text-[#00e676] tabular-nums">
-              {roomServiceOrders.length} ACTIVE
-            </span>
-          </div>
-
-          <div className="space-y-3 pr-1">
-            {roomServiceOrders.map((ord) => (
-              <div
-                key={ord.id}
-                style={{
-                  transform: 'rotateX(16deg) rotateY(-14deg)',
-                  transformStyle: 'preserve-3d',
-                }}
-                className="p-3 bg-[#050509]/92 border border-[#00e676]/60 hover:border-[#d4af37] transition duration-300 font-mono text-xs"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-[#00e676]">SUITE {ord.roomNumber}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 bg-[#00e676]/15 text-[#00e676] uppercase">
-                    {ord.status}
-                  </span>
-                </div>
-                <div className="text-[11px] text-[#f4f0ea] truncate mt-1">{ord.guestName}</div>
-                <div className="text-[9px] text-[#d4af37] mt-0.5">
-                  {ord.totalIqd.toLocaleString()} IQD (${ord.totalUsd})
-                </div>
-                <div className="w-full h-1 bg-[#14141c] mt-2 overflow-hidden">
-                  <div
-                    className="h-full bg-[#00e676]"
-                    style={{
-                      width:
-                        ord.status === 'queued'
-                          ? '33%'
-                          : ord.status === 'preparing'
-                          ? '66%'
-                          : '92%',
-                    }}
-                  />
-                </div>
-                <button
-                  onClick={() => {
-                    triggerShaderPulse(1.15);
-                    advanceRoomServiceStatus(ord.id);
-                  }}
-                  className="mt-2.5 w-full py-1.5 bg-[#081610] hover:bg-[#00e676] text-[#00e676] hover:text-[#030305] border border-[#00e676]/60 text-[9px] font-bold uppercase tracking-wider transition"
-                >
-                  ADVANCE STAGE →
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* COLUMN [04]: ENGINEERING & MAINTENANCE */}
-        <div className="flex flex-col gap-3">
-          <div className="px-3 py-2 bg-[#040406]/95 border border-[#ff1e7a]/60 font-mono flex items-center justify-between">
-            <span className="text-[10px] font-bold text-[#ff1e7a] tracking-[0.14em]">
-              [04] ENGINEERING & MAINT
-            </span>
-            <span className="text-[10px] text-[#ff1e7a] tabular-nums">
-              {maintenanceTickets.length} TICKETS
-            </span>
-          </div>
-
-          <div className="space-y-3 pr-1">
-            {maintenanceTickets.map((tkt) => (
-              <div
-                key={tkt.id}
-                style={{
-                  transform: 'rotateX(16deg) rotateY(-14deg)',
-                  transformStyle: 'preserve-3d',
-                }}
-                className="p-3 bg-[#050509]/92 border border-[#ff1e7a]/60 hover:border-[#00f0ff] transition duration-300 font-mono text-xs"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-[#ff1e7a]">RM {tkt.roomNumber}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 bg-[#ff1e7a]/20 text-[#ff1e7a] uppercase">
-                    {tkt.status}
-                  </span>
-                </div>
-                <div className="text-[10px] text-[#f4f0ea] font-semibold mt-1">
-                  {tkt.problemType}
-                </div>
-                <div className="text-[9px] text-[#787885] line-clamp-1 mt-0.5">{tkt.note}</div>
-                <div className="w-full h-1 bg-[#14141c] mt-2 overflow-hidden">
-                  <div
-                    className="h-full bg-[#ff1e7a]"
-                    style={{ width: tkt.status === 'fixed_awaiting_check' ? '85%' : '45%' }}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-1 mt-2.5 text-[9px] font-bold">
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
                   <button
                     onClick={() => {
-                      triggerShaderPulse(1.15);
-                      updateMaintenanceTicketStatus(tkt.id, 'fixed_awaiting_check', role);
+                      triggerShaderPulse(1.3);
+                      inspectRoomVerdict(task.roomNumber, 'passed');
                     }}
-                    className="py-1.5 bg-emerald-950 hover:bg-emerald-500 text-emerald-300 hover:text-black border border-emerald-500/50 uppercase"
+                    className="py-1.5 rounded-xl bg-[#00e676]/20 hover:bg-[#00e676] text-[#00e676] hover:text-[#030305] border border-[#00e676]/50 font-semibold"
                   >
-                    MARK FIXED
+                    ✓ Pass Ready
                   </button>
                   <button
                     onClick={() => {
                       triggerShaderPulse(1.3);
-                      updateMaintenanceTicketStatus(tkt.id, 'checked_ok', 'executive');
+                      inspectRoomVerdict(task.roomNumber, 'failed');
                     }}
-                    className="py-1.5 bg-[#00e676]/20 hover:bg-[#00e676] text-[#00e676] hover:text-black border border-[#00e676] uppercase"
+                    className="py-1.5 rounded-xl bg-[#ff1e7a]/20 hover:bg-[#ff1e7a] text-[#ff1e7a] hover:text-white border border-[#ff1e7a]/50 font-semibold"
                   >
-                    CHECKED — OK
+                    ✕ Fail
                   </button>
                 </div>
-              </div>
-            ))}
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* PLANE [03]: IN-SUITE DINING */}
+        <div className="space-y-3.5">
+          <div className="hud-glass rounded-2xl px-4 py-3 border-t border-[#00e676]/50 flex items-center justify-between">
+            <span className="font-mono text-xs font-semibold text-[#00e676] tracking-wider">
+              03 // IN-SUITE DINING
+            </span>
+            <span className="font-mono text-[11px] text-[#00e676] tabular-nums">
+              {roomServiceOrders.length} Orders
+            </span>
           </div>
+
+          {roomServiceOrders.map((ord) => (
+            <div
+              key={ord.id}
+              style={{
+                transform: 'rotateX(14deg) rotateY(-12deg)',
+                transformStyle: 'preserve-3d',
+              }}
+              className="rounded-2xl hud-glass p-4 border border-[#00e676]/35 hover:border-[#d4af37] transition-all duration-300 space-y-2.5"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-mono text-xs font-bold text-[#00e676]">
+                    SUITE {ord.roomNumber}
+                  </div>
+                  <div className="text-xs text-white truncate max-w-[150px]">{ord.guestName}</div>
+                </div>
+                <ProgressRingSvg
+                  percent={
+                    ord.status === 'queued' ? 35 : ord.status === 'preparing' ? 68 : 94
+                  }
+                  color="#00e676"
+                />
+              </div>
+              <div className="font-mono text-[10px] text-[#d4af37] tabular-nums">
+                {ord.totalIqd.toLocaleString()} IQD (${ord.totalUsd}) • {ord.status.toUpperCase()}
+              </div>
+              <button
+                onClick={() => {
+                  triggerShaderPulse(1.2);
+                  advanceRoomServiceStatus(ord.id);
+                }}
+                className="w-full py-2 rounded-xl bg-[#00e676]/15 hover:bg-[#00e676] text-[#00e676] hover:text-[#030305] border border-[#00e676]/40 font-mono text-[10px] font-semibold uppercase tracking-wider transition"
+              >
+                Advance Stage →
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* PLANE [04]: ENGINEERING SLA */}
+        <div className="space-y-3.5">
+          <div className="hud-glass rounded-2xl px-4 py-3 border-t border-[#ff1e7a]/50 flex items-center justify-between">
+            <span className="font-mono text-xs font-semibold text-[#ff1e7a] tracking-wider">
+              04 // ENGINEERING SLA
+            </span>
+            <span className="font-mono text-[11px] text-[#ff1e7a] tabular-nums">
+              {maintenanceTickets.length} Tickets
+            </span>
+          </div>
+
+          {maintenanceTickets.map((tkt) => (
+            <div
+              key={tkt.id}
+              style={{
+                transform: 'rotateX(14deg) rotateY(-12deg)',
+                transformStyle: 'preserve-3d',
+              }}
+              className="rounded-2xl hud-glass p-4 border border-[#ff1e7a]/35 hover:border-[#00f0ff] transition-all duration-300 space-y-2.5"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-mono text-xs font-bold text-[#ff1e7a]">
+                    SUITE {tkt.roomNumber}
+                  </div>
+                  <div className="text-xs text-white font-medium">{tkt.problemType}</div>
+                </div>
+                <ProgressRingSvg
+                  percent={tkt.status === 'fixed_awaiting_check' ? 88 : 45}
+                  color="#ff1e7a"
+                />
+              </div>
+              <div className="text-[11px] text-white/55 line-clamp-1">{tkt.note}</div>
+              <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                <button
+                  onClick={() => {
+                    triggerShaderPulse(1.2);
+                    updateMaintenanceTicketStatus(tkt.id, 'fixed_awaiting_check', role);
+                  }}
+                  className="py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-400 text-emerald-200 hover:text-[#030305] border border-emerald-400/40 font-semibold"
+                >
+                  Mark Fixed
+                </button>
+                <button
+                  onClick={() => {
+                    triggerShaderPulse(1.35);
+                    updateMaintenanceTicketStatus(tkt.id, 'checked_ok', 'executive');
+                  }}
+                  className="py-1.5 rounded-xl bg-[#00e676]/20 hover:bg-[#00e676] text-[#00e676] hover:text-[#030305] border border-[#00e676]/50 font-semibold"
+                >
+                  Checked — OK
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

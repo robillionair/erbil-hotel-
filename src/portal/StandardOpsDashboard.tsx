@@ -10,29 +10,30 @@ import {
   Settings,
   Download,
   Upload,
-  RotateCcw,
   Plus,
   Trash2,
-  CheckCircle2,
-  AlertTriangle,
-  ShieldAlert,
   Utensils,
+  X,
+  Thermometer,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Globe,
 } from 'lucide-react';
 import {
   useHotelOpsStore,
   isRoomReady,
   RoomType,
+  RoomNode,
   ExtraGuest,
   MaintenanceProblemType,
   BookingChannel,
-  EXCHANGE_RATE_IQD,
 } from '../store/useHotelOpsStore';
 import { useAuthStore, AppLanguage } from '../store/useAuthStore';
 import { useErbilTelemetry } from '../citadel-mode/telemetry/ErbilTelemetryStream';
 
 type OpsModule =
-  | 'dashboard'
-  | 'rooms'
+  | 'matrix'
   | 'checkin'
   | 'housekeeping'
   | 'inspections'
@@ -45,8 +46,7 @@ const TRANSLATIONS: Record<
   AppLanguage,
   {
     hotelTitle: string;
-    dashboard: string;
-    rooms: string;
+    matrix: string;
     checkin: string;
     housekeeping: string;
     inspections: string;
@@ -60,46 +60,43 @@ const TRANSLATIONS: Record<
   }
 > = {
   en: {
-    hotelTitle: 'ERBIL HOTEL // SWISS-GRID OPERATIONS',
-    dashboard: '01. Dashboard',
-    rooms: '02. Rooms by Floor',
-    checkin: '03. Check-In / Out',
-    housekeeping: '04. Housekeeping',
-    inspections: '05. Inspections',
-    maintenance: '06. Maintenance',
-    stays: '07. Stays & Culinary',
-    reports: '08. Daily Report',
-    settings: '09. Settings & Backup',
-    readyRoomsLabel: 'Ready rooms',
-    noRoomsReady: 'No rooms ready for check-in',
-    inHouseCheckout: 'In house now — check out',
+    hotelTitle: 'Erbil Hotel • Spatial Operations Command',
+    matrix: 'Spatial Floor Matrix',
+    checkin: 'Reception Check-In',
+    housekeeping: 'Housekeeping',
+    inspections: 'Inspections',
+    maintenance: 'Maintenance',
+    stays: 'Culinary & Stays',
+    reports: 'Daily Audit',
+    settings: 'Settings & Vault',
+    readyRoomsLabel: 'Certified Ready Rooms',
+    noRoomsReady: 'No rooms currently certified ready for check-in',
+    inHouseCheckout: 'Active In-House Folios — Check Out',
   },
   ar: {
-    hotelTitle: 'فندق أربيل // نظام إدارة العمليات الفندقية',
-    dashboard: '01. لوحة القيادة',
-    rooms: '02. الغرف حسب الطابق',
-    checkin: '03. تسجيل الدخول / الخروج',
-    housekeeping: '04. التدبير المنزلي',
-    inspections: '05. فحص المشرف',
-    maintenance: '06. الصيانة والأعطال',
-    stays: '07. الإقامات والطلبات',
-    reports: '08. التقرير اليومي',
-    settings: '09. الإعدادات والنسخ الاحتياطي',
-    readyRoomsLabel: 'الغرف الجاهزة',
+    hotelTitle: 'فندق أربيل • مركز إدارة العمليات المكانية',
+    matrix: 'مصفوفة الطوابق والغرف',
+    checkin: 'تسجيل الدخول والخروج',
+    housekeeping: 'التدبير المنزلي',
+    inspections: 'فحص المشرف',
+    maintenance: 'الصيانة والأعطال',
+    stays: 'الإقامات والطلبات',
+    reports: 'التقرير اليومي',
+    settings: 'الإعدادات والنسخ الاحتياطي',
+    readyRoomsLabel: 'الغرف الجاهزة المعتمدة',
     noRoomsReady: 'لا توجد غرف جاهزة لتسجيل الدخول',
     inHouseCheckout: 'النزلاء المقيمون حالياً — تسجيل الخروج',
   },
   ku: {
-    hotelTitle: 'هۆتێلی هەولێر // سیستەمی بەڕێوەبردنی کاروباری هۆتێل',
-    dashboard: '01. داشبۆردی سەرەکی',
-    rooms: '02. ژوورەکان بەپێی نهۆم',
-    checkin: '03. هاتنەژوورەوە / دەرچوون',
-    housekeeping: '04. پاککردنەوە',
-    inspections: '05. پشکنینی سەرپەرشتیار',
-    maintenance: '06. چاککردنەوە',
-    stays: '07. میوانەکان و خزمەتگوزاری',
-    reports: '08. ڕاپۆرتی ڕۆژانە',
-    settings: '09. ڕێکخستن و هەڵگرتن',
+    hotelTitle: 'هۆتێلی هەولێر • ناوەندی بەڕێوەبردنی کاروباری هۆتێل',
+    matrix: 'تۆڕی نهۆم و ژوورەکان',
+    checkin: 'هاتنەژوورەوە و دەرچوون',
+    housekeeping: 'پاککردنەوە',
+    inspections: 'پشکنینی سەرپەرشتیار',
+    maintenance: 'چاککردنەوە',
+    stays: 'میوانەکان و خزمەتگوزاری',
+    reports: 'ڕاپۆرتی ڕۆژانە',
+    settings: 'ڕێکخستن و هەڵگرتن',
     readyRoomsLabel: 'ژوورە ئامادەکان',
     noRoomsReady: 'هیچ ژوورێک ئامادە نییە بۆ هاتنەژوورەوە',
     inHouseCheckout: 'میوانانی ئێستا لە هۆتێل — دەرچوون',
@@ -115,7 +112,6 @@ export const StandardOpsDashboard: React.FC = () => {
 
   const {
     rooms,
-    reservations,
     housekeepingTasks,
     maintenanceTickets,
     roomServiceOrders,
@@ -125,6 +121,7 @@ export const StandardOpsDashboard: React.FC = () => {
     setRoomType,
     setFloorRoomTypes,
     setOwnerBasePriceIqd,
+    setRoomHvacTemp,
     markCleaningStarted,
     markCleaningFinishedAwaitingInspection,
     inspectRoomVerdict,
@@ -138,14 +135,19 @@ export const StandardOpsDashboard: React.FC = () => {
 
   const telemetry = useErbilTelemetry();
 
-  const [activeModule, setActiveModule] = useState<OpsModule>('dashboard');
+  const [activeModule, setActiveModule] = useState<OpsModule>('matrix');
+  const [selectedFloor, setSelectedFloor] = useState<number | 'ALL'>('ALL');
+  const [roomStatusFilter, setRoomStatusFilter] = useState<
+    'ALL' | 'READY' | 'OCCUPIED' | 'DIRTY' | 'OOS'
+  >('ALL');
+  const [inspectedRoomNumber, setInspectedRoomNumber] = useState<string | null>(null);
 
-  // ROOMS PAGE STATE: Rooms stay hidden until a floor is clicked
-  const [clickedFloor, setClickedFloor] = useState<number | null>(null);
-  const [roomStatusFilter, setRoomStatusFilter] = useState<'ALL' | 'READY' | 'OCCUPIED' | 'DIRTY' | 'OOS'>('ALL');
-  const [roomTypeFilter, setRoomTypeFilter] = useState<string>('ALL');
+  const inspectedRoom: RoomNode | null = useMemo(
+    () => rooms.find((r) => r.roomNumber === inspectedRoomNumber) || null,
+    [rooms, inspectedRoomNumber]
+  );
 
-  // CHECK-IN FORM STATE
+  // Check-In Form State
   const readyRooms = useMemo(() => rooms.filter(isRoomReady), [rooms]);
   const occupiedRooms = useMemo(
     () => rooms.filter((r) => r.occupancyStatus === 'occupied'),
@@ -165,14 +167,14 @@ export const StandardOpsDashboard: React.FC = () => {
   const [ciExtraGuests, setCiExtraGuests] = useState<ExtraGuest[]>([]);
   const [ciMessage, setCiMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // MAINTENANCE REPORT TAPS STATE
+  // Maintenance State
   const [dmgRoom, setDmgRoom] = useState('101');
   const [dmgProblem, setDmgProblem] = useState<MaintenanceProblemType>('HVAC / Climate');
   const [dmgPriority, setDmgPriority] = useState<'low' | 'medium' | 'high' | 'critical_oos'>('high');
   const [dmgNote, setDmgNote] = useState('');
   const [maintNotice, setMaintNotice] = useState<string | null>(null);
 
-  // SETTINGS / START FRESH STATE
+  // Settings / Reset State
   const [resetConfirmStep, setResetConfirmStep] = useState<0 | 1 | 2>(0);
   const [resetTypedPhrase, setResetTypedPhrase] = useState('');
   const [settingsMsg, setSettingsMsg] = useState<string | null>(null);
@@ -250,879 +252,732 @@ export const StandardOpsDashboard: React.FC = () => {
   const finalCheckinPay = Math.round((fullCheckinPrice * ciDiscountPct) / 100);
 
   return (
-    <div className="min-h-[calc(100vh-44px)] bg-[#060609] text-[#f4f0ea] flex flex-col lg:flex-row">
-      {/* LEFT SWISS-GRID SIDEBAR (Hidden in Simple Mode) */}
-      {!user?.simpleMode && (
-        <aside className="w-full lg:w-64 bg-[#040406] border-b lg:border-b-0 lg:border-r border-[#16161a] flex flex-col justify-between shrink-0">
-          <div>
-            {/* Brand Header */}
-            <div className="p-4 border-b border-[#16161a] flex items-center gap-3">
-              <img
-                src="/assets/logo/erbil-hotel-logo.jpeg"
-                alt="Erbil Hotel"
-                className="w-10 h-10 object-cover border border-[#d4af37]"
-              />
-              <div className="min-w-0">
-                <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#d4af37] truncate">
-                  SALEM ST // SULAYMANIYAH
-                </div>
-                <div className="font-serif text-base font-semibold text-[#f4f0ea] truncate">
-                  Erbil Hotel Ops
-                </div>
-              </div>
-            </div>
-
-            {/* Language Switcher (EN / AR / KU RTL) */}
-            <div className="p-3 border-b border-[#16161a] bg-[#08080c]">
-              <div className="font-mono text-[9px] uppercase tracking-widest text-[#686875] mb-1.5">
-                LANGUAGE / زمان / اللغة
-              </div>
-              <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
-                {(
-                  [
-                    { code: 'en', label: 'EN' },
-                    { code: 'ar', label: 'العربية' },
-                    { code: 'ku', label: 'کوردی' },
-                  ] as const
-                ).map((l) => (
-                  <button
-                    key={l.code}
-                    onClick={() => setLanguage(l.code)}
-                    className={`py-1 border transition ${
-                      lang === l.code
-                        ? 'bg-[#d4af37] text-[#030305] border-[#d4af37] font-bold'
-                        : 'bg-[#040406] text-[#888895] border-[#1c1c24] hover:text-[#f4f0ea]'
-                    }`}
-                  >
-                    {l.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Navigation Modules */}
-            <nav className="p-2 space-y-1 font-mono text-xs">
-              {(
-                [
-                  { id: 'dashboard', label: t.dashboard, icon: LayoutDashboard },
-                  { id: 'rooms', label: t.rooms, icon: BedDouble },
-                  { id: 'checkin', label: t.checkin, icon: LogIn },
-                  { id: 'housekeeping', label: t.housekeeping, icon: Sparkles },
-                  { id: 'inspections', label: t.inspections, icon: ClipboardCheck },
-                  { id: 'maintenance', label: t.maintenance, icon: Wrench },
-                  { id: 'stays', label: t.stays, icon: Utensils },
-                  { id: 'reports', label: t.reports, icon: FileBarChart },
-                  { id: 'settings', label: t.settings, icon: Settings },
-                ] as const
-              ).map((item) => {
-                const Icon = item.icon;
-                const active = activeModule === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveModule(item.id)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition ${
-                      active
-                        ? 'bg-[#12121a] text-[#d4af37] border-l-2 border-[#d4af37]'
-                        : 'text-[#888895] hover:bg-[#0c0c12] hover:text-[#f4f0ea]'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* Simple Mode Toggle & Live Status */}
-          <div className="p-4 border-t border-[#16161a] space-y-2.5 font-mono text-[10px]">
-            <button
-              onClick={toggleSimpleMode}
-              className="w-full py-2 px-3 bg-[#0e0e14] hover:bg-[#161620] border border-[#24242e] text-[#00f0ff] uppercase tracking-wider"
-            >
-              Switch to Easy Simple Screen
-            </button>
-            <div className="p-2.5 bg-[#00e676]/10 border border-[#00e676]/30 text-[#00e676]">
-              ● Real hotel data — saved on this computer
-            </div>
-          </div>
-        </aside>
-      )}
-
-      {/* MAIN WORKSPACE */}
-      <main className="flex-1 p-5 sm:p-8 overflow-y-auto space-y-6">
-        {/* Top Simple Mode Exit Banner if active */}
-        {user?.simpleMode && (
-          <div className="p-3 bg-[#101018] border border-[#00f0ff]/40 flex items-center justify-between font-mono text-xs">
-            <span className="text-[#00f0ff]">
-              SIMPLE MODE (EASY SCREEN) ACTIVE FOR ROLE: {role.toUpperCase()}
-            </span>
-            <button
-              onClick={toggleSimpleMode}
-              className="px-3 py-1 bg-[#00f0ff] text-[#030305] font-bold uppercase"
-            >
-              Return to Full 9-Module App
-            </button>
-          </div>
-        )}
-
-        {/* MODULE 1: DASHBOARD */}
-        {activeModule === 'dashboard' && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#16161a] pb-4">
-              <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#d4af37]">
-                  REAL-TIME HOTEL OPERATIONS OVERVIEW
-                </div>
-                <h2 className="font-serif text-3xl text-[#f4f0ea] mt-0.5">{t.hotelTitle}</h2>
-              </div>
-              <div className="flex items-center gap-2 font-mono text-xs">
-                <button
-                  onClick={() => setActiveModule('checkin')}
-                  className="px-4 py-2 bg-[#00e676] text-[#030305] font-bold uppercase tracking-wider"
-                >
-                  + Quick Check-In ({telemetry.readyRooms} Ready)
-                </button>
-                <button
-                  onClick={() => setActiveModule('maintenance')}
-                  className="px-4 py-2 bg-[#12121a] border border-[#2a2a36] text-[#f4f0ea] uppercase tracking-wider"
-                >
-                  Report Damage
-                </button>
-              </div>
-            </div>
-
-            {/* 8 KPI Metric Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono">
-              <div className="p-4 bg-[#0a0a0e] border border-[#00e676]/40">
-                <div className="text-[10px] text-[#888895] uppercase">READY ROOMS (CERTIFIED)</div>
-                <div className="text-3xl font-bold text-[#00e676] mt-1 tabular-nums">
-                  {telemetry.readyRooms}
-                </div>
-                <div className="text-[10px] text-[#686875] mt-1">
-                  Vacant + Clean + Passed + In Service
-                </div>
-              </div>
-
-              <div className="p-4 bg-[#0a0a0e] border border-[#00f0ff]/40">
-                <div className="text-[10px] text-[#888895] uppercase">OCCUPIED ROOMS</div>
-                <div className="text-3xl font-bold text-[#00f0ff] mt-1 tabular-nums">
-                  {telemetry.occupiedRooms} / {telemetry.totalRooms}
-                </div>
-                <div className="text-[10px] text-[#686875] mt-1">
-                  Occupancy: {telemetry.occupancyPercent}% ({telemetry.vipOccupiedRooms} VIP)
-                </div>
-              </div>
-
-              <div className="p-4 bg-[#0a0a0e] border border-[#ff8a3d]/40">
-                <div className="text-[10px] text-[#888895] uppercase">DIRTY / AWAITING INSPECT</div>
-                <div className="text-3xl font-bold text-[#ff8a3d] mt-1 tabular-nums">
-                  {telemetry.dirtyRooms} / {telemetry.awaitingInspectionRooms}
-                </div>
-                <div className="text-[10px] text-[#686875] mt-1">
-                  Active Turnover Queue
-                </div>
-              </div>
-
-              <div className="p-4 bg-[#0a0a0e] border border-[#ff1e7a]/40">
-                <div className="text-[10px] text-[#888895] uppercase">OUT OF SERVICE (OOS)</div>
-                <div className="text-3xl font-bold text-[#ff1e7a] mt-1 tabular-nums">
-                  {telemetry.outOfServiceRooms}
-                </div>
-                <div className="text-[10px] text-[#686875] mt-1">
-                  Open Repair Tickets: {telemetry.openMaintenanceCount}
-                </div>
-              </div>
-            </div>
-
-            {/* Dual-Currency Treasury & SLA Bar */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono">
-              <div className="p-4 bg-[#0a0a0e] border border-[#1c1c24]">
-                <div className="text-[10px] text-[#888895] uppercase">CUMULATIVE REVENUE (IQD / USD)</div>
-                <div className="text-xl font-bold text-[#d4af37] mt-1 tabular-nums">
-                  {telemetry.dualCurrencyRevenue.totalIqd.toLocaleString()} IQD
-                </div>
-                <div className="text-xs text-[#00e676] mt-0.5 tabular-nums">
-                  ${telemetry.dualCurrencyRevenue.totalUsd.toLocaleString()} USD (@ 1,310 IQD)
-                </div>
-              </div>
-              <div className="p-4 bg-[#0a0a0e] border border-[#1c1c24]">
-                <div className="text-[10px] text-[#888895] uppercase">ADR & REVPAR METRICS</div>
-                <div className="text-xl font-bold text-[#f4f0ea] mt-1 tabular-nums">
-                  ADR: {telemetry.adrIqd.toLocaleString()} IQD (${telemetry.adrUsd})
-                </div>
-                <div className="text-xs text-[#00f0ff] mt-0.5 tabular-nums">
-                  RevPAR: {telemetry.revParIqd.toLocaleString()} IQD (${telemetry.revParUsd})
-                </div>
-              </div>
-              <div className="p-4 bg-[#0a0a0e] border border-[#1c1c24]">
-                <div className="text-[10px] text-[#888895] uppercase">OPERATIONAL SLA DRIFT INDEX</div>
-                <div className="text-xl font-bold text-[#00e676] mt-1 tabular-nums">
-                  {telemetry.slaDriftScore.toFixed(3)} DRIFT
-                </div>
-                <div className="text-xs text-[#888895] mt-0.5">
-                  Active Room Service Orders: {telemetry.activeServiceOrderCount}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODULE 2: ROOMS PAGE (Strictly hidden until a floor is clicked, no long floor structure box) */}
-        {activeModule === 'rooms' && (
-          <div className="space-y-6">
-            {/* Admin Room Types by Floor Panel */}
-            {role === 'executive' && (
-              <div className="p-4 bg-[#0a0a0e] border border-[#d4af37]/40 space-y-3">
-                <div className="font-mono text-xs font-bold text-[#d4af37] uppercase tracking-wider">
-                  Room Types by Floor — Admin Bulk Configuration
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 font-mono text-xs">
-                  {[1, 2, 3, 4, 5, 6].map((fl) => (
-                    <div key={fl} className="p-2.5 bg-[#050508] border border-[#1e1e28] space-y-1.5">
-                      <div className="text-[#f4f0ea] font-bold">Floor {fl}</div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setFloorRoomTypes(fl, 'Single')}
-                          className="flex-1 py-1 bg-[#12121a] hover:bg-[#d4af37] hover:text-[#030305] border border-[#2a2a36] text-[10px]"
-                        >
-                          All Single
-                        </button>
-                        <button
-                          onClick={() => setFloorRoomTypes(fl, 'Twin')}
-                          className="flex-1 py-1 bg-[#12121a] hover:bg-[#00f0ff] hover:text-[#030305] border border-[#2a2a36] text-[10px]"
-                        >
-                          All Twin
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Filters & Floor Selector Buttons */}
-            <div className="p-4 bg-[#0a0a0e] border border-[#1c1c24] space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <div className="font-mono text-[10px] uppercase tracking-widest text-[#888895]">
-                    CLICK A FLOOR NUMBER TO REVEAL ITS ROOMS
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-2 font-mono text-xs">
-                    {[1, 2, 3, 4, 5, 6].map((fl) => (
-                      <button
-                        key={fl}
-                        onClick={() => setClickedFloor(clickedFloor === fl ? null : fl)}
-                        className={`px-4 py-2 border font-bold transition ${
-                          clickedFloor === fl
-                            ? 'bg-[#d4af37] text-[#030305] border-[#d4af37]'
-                            : 'bg-[#050508] text-[#f4f0ea] border-[#262632] hover:border-[#d4af37]'
-                        }`}
-                      >
-                        Floor {fl} ({fl}01–{fl}08)
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Status & Room Type Filters */}
-                <div className="flex flex-wrap gap-2 font-mono text-xs">
-                  <select
-                    value={roomStatusFilter}
-                    onChange={(e) => setRoomStatusFilter(e.target.value as typeof roomStatusFilter)}
-                    className="bg-[#050508] border border-[#262632] px-3 py-2 text-[#f4f0ea]"
-                  >
-                    <option value="ALL">All Statuses</option>
-                    <option value="READY">Ready (Green)</option>
-                    <option value="OCCUPIED">Occupied</option>
-                    <option value="DIRTY">Dirty / Cleaning</option>
-                    <option value="OOS">Out of Service (Red)</option>
-                  </select>
-                  <select
-                    value={roomTypeFilter}
-                    onChange={(e) => setRoomTypeFilter(e.target.value)}
-                    className="bg-[#050508] border border-[#262632] px-3 py-2 text-[#f4f0ea]"
-                  >
-                    <option value="ALL">All Room Types</option>
-                    <option value="Single">Single</option>
-                    <option value="Twin">Twin</option>
-                    <option value="Executive Suite">Executive Suite</option>
-                    <option value="Diplomatic Suite">Diplomatic Suite</option>
-                    <option value="Royal Penthouse">Royal Penthouse</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Room Cards (Strictly hidden until a floor is clicked) */}
-            {clickedFloor === null ? (
-              <div className="p-12 bg-[#0a0a0e] border border-[#1c1c24] text-center font-mono text-sm text-[#888895]">
-                Select a Floor (Floor 1 – Floor 6) above to inspect its rooms.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
-                {rooms
-                  .filter((r) => r.floor === clickedFloor)
-                  .filter((r) => {
-                    if (roomStatusFilter === 'READY') return isRoomReady(r);
-                    if (roomStatusFilter === 'OCCUPIED') return r.occupancyStatus === 'occupied';
-                    if (roomStatusFilter === 'DIRTY') return r.housekeepingStatus !== 'clean';
-                    if (roomStatusFilter === 'OOS') return r.maintenanceStatus === 'out_of_service';
-                    return true;
-                  })
-                  .filter((r) => (roomTypeFilter === 'ALL' ? true : r.roomType === roomTypeFilter))
-                  .map((rm) => {
-                    const ready = isRoomReady(rm);
-                    const isOos = rm.maintenanceStatus === 'out_of_service';
-                    const isDirty = rm.housekeepingStatus !== 'clean' || rm.inspectionStatus !== 'passed';
-
-                    return (
-                      <div
-                        key={rm.roomNumber}
-                        className={`p-4 bg-[#0a0a0e] border space-y-3 ${
-                          isOos
-                            ? 'border-[#ff1e7a]'
-                            : ready
-                            ? 'border-[#00e676]'
-                            : isDirty
-                            ? 'border-[#ff8a3d]'
-                            : 'border-[#00f0ff]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-lg font-bold text-[#f4f0ea]">
-                            RM {rm.roomNumber}
-                          </span>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 font-bold uppercase ${
-                              isOos
-                                ? 'bg-[#ff1e7a]/20 text-[#ff1e7a]'
-                                : ready
-                                ? 'bg-[#00e676]/20 text-[#00e676]'
-                                : rm.occupancyStatus === 'occupied'
-                                ? 'bg-[#00f0ff]/20 text-[#00f0ff]'
-                                : 'bg-[#ff8a3d]/20 text-[#ff8a3d]'
-                            }`}
-                          >
-                            {isOos
-                              ? 'OUT OF SERVICE'
-                              : ready
-                              ? 'READY'
-                              : rm.occupancyStatus === 'occupied'
-                              ? 'OCCUPIED'
-                              : 'NEEDS TURNOVER'}
-                          </span>
-                        </div>
-
-                        {/* Separate Statuses Display */}
-                        <div className="text-[11px] space-y-1 text-[#9898a6] border-t border-b border-[#181820] py-2">
-                          <div className="flex justify-between">
-                            <span>Floor / Type:</span>
-                            <span className="text-[#d4af37]">
-                              FL {rm.floor} // {rm.roomType}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Occupancy:</span>
-                            <span className="text-[#f4f0ea] uppercase">{rm.occupancyStatus}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Housekeeping:</span>
-                            <span className="text-[#f4f0ea] uppercase">
-                              {rm.housekeepingStatus}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Inspection:</span>
-                            <span className="text-[#f4f0ea] uppercase">{rm.inspectionStatus}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Maintenance:</span>
-                            <span className="text-[#f4f0ea] uppercase">{rm.maintenanceStatus}</span>
-                          </div>
-                        </div>
-
-                        {/* Guest Details Privacy Rule */}
-                        {rm.occupancyStatus === 'occupied' && (
-                          <div className="p-2 bg-[#050508] border border-[#1c1c24] text-[10px] space-y-0.5">
-                            <div className="text-[#00f0ff] font-bold">
-                              Guest: {rm.currentGuestName}
-                            </div>
-                            {canSeePrivateGuestDetails && (
-                              <>
-                                <div>ID: {rm.currentGuestIdNumber}</div>
-                                <div>Tel: {rm.currentGuestContact}</div>
-                                <div>Car: {rm.currentGuestCarNumber || 'N/A'}</div>
-                                {rm.extraGuests.length > 0 && (
-                                  <div className="text-[#d4af37]">
-                                    +{rm.extraGuests.length} Extra Guest(s)
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Admin Room Type Changer */}
-                        {role === 'executive' && (
-                          <div className="flex items-center justify-between pt-1">
-                            <span className="text-[10px] text-[#686875]">Change Type:</span>
-                            <select
-                              value={rm.roomType}
-                              onChange={(e) =>
-                                setRoomType(rm.roomNumber, e.target.value as RoomType)
-                              }
-                              className="bg-[#050508] border border-[#262632] px-2 py-1 text-[10px] text-[#f4f0ea]"
-                            >
-                              <option value="Single">Single</option>
-                              <option value="Twin">Twin</option>
-                              <option value="Executive Suite">Executive Suite</option>
-                              <option value="Diplomatic Suite">Diplomatic Suite</option>
-                              <option value="Royal Penthouse">Royal Penthouse</option>
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* MODULE 3: CHECK-IN / CHECK-OUT BOARD */}
-        {activeModule === 'checkin' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left 7 Cols: Choose a READY room & Check-In Form */}
-            <div className="lg:col-span-7 bg-[#0a0a0e] border border-[#1c1c24] p-6 space-y-5">
-              <div className="flex items-center justify-between border-b border-[#181820] pb-3">
-                <h3 className="font-serif text-2xl text-[#f4f0ea]">
-                  Reception Check-In Board
-                </h3>
-                <span className="px-3 py-1 bg-[#00e676]/15 border border-[#00e676] text-[#00e676] font-mono text-xs font-bold">
-                  {t.readyRoomsLabel}: {readyRooms.length}
+    <div className="min-h-[calc(100vh-56px)] text-[#f4f0ea] px-4 sm:px-8 py-6 max-w-[1600px] mx-auto space-y-6 relative">
+      {/* =====================================================================
+          1. FLOATING TRANSLUCENT LINEAR/RAYCAST COMMAND HEADER & KPI STRIP
+      ===================================================================== */}
+      <div className="glass-panel rounded-3xl p-5 flex flex-col gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <img
+              src="/assets/logo/erbil-hotel-logo.jpeg"
+              alt="Erbil Hotel"
+              className="w-11 h-11 rounded-2xl object-cover border border-[#d4af37]/50 shadow-lg"
+            />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#00e676] animate-pulse" />
+                <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#d4af37]">
+                  Realtime Operations Workspace
                 </span>
               </div>
+              <h1 className="font-serif text-2xl sm:text-3xl text-white font-light">
+                {t.hotelTitle}
+              </h1>
+            </div>
+          </div>
 
-              {readyRooms.length === 0 ? (
-                <div className="p-6 bg-[#ff1e7a]/10 border border-[#ff1e7a] text-[#ff1e7a] font-mono text-sm">
-                  {t.noRoomsReady}
-                </div>
-              ) : (
-                <form onSubmit={handleCheckInSubmit} className="space-y-4 font-mono text-xs">
-                  <div>
-                    <label className="block text-[10px] uppercase text-[#888895] mb-1.5">
-                      Choose a Room for Check-In (Shows ONLY Ready Rooms)
-                    </label>
-                    <select
-                      value={effectiveSelectedReadyRoom}
-                      onChange={(e) => setSelectedReadyRoom(e.target.value)}
-                      className="w-full bg-[#050508] border border-[#00e676]/60 px-3 py-2.5 text-sm text-[#f4f0ea]"
-                    >
-                      {readyRooms.map((r) => (
-                        <option key={r.roomNumber} value={r.roomNumber}>
-                          Room {r.roomNumber} (Floor {r.floor} — {r.roomType}) —{' '}
-                          {r.baseRateIqd.toLocaleString()} IQD [READY]
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+          {/* Language & Simple Mode Pills */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="glass-pill rounded-full p-1 flex items-center gap-1 text-xs">
+              <Globe className="w-3.5 h-3.5 text-[#d4af37] ml-2 mr-1" />
+              {(
+                [
+                  { code: 'en', label: 'EN' },
+                  { code: 'ar', label: 'العربية' },
+                  { code: 'ku', label: 'کوردی' },
+                ] as const
+              ).map((l) => (
+                <button
+                  key={l.code}
+                  onClick={() => setLanguage(l.code)}
+                  className={`px-3 py-1 rounded-full transition ${
+                    lang === l.code
+                      ? 'bg-[#d4af37] text-[#030305] font-semibold'
+                      : 'text-white/65 hover:text-white'
+                  }`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] text-[#888895] uppercase mb-1">
-                        Full Name (Required) *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={ciName}
-                        onChange={(e) => setCiName(e.target.value)}
-                        placeholder="Guest Full Name"
-                        className="w-full bg-[#050508] border border-[#262632] px-3 py-2 text-[#f4f0ea]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-[#888895] uppercase mb-1">
-                        ID / Passport Number (Required) *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={ciIdNumber}
-                        onChange={(e) => setCiIdNumber(e.target.value)}
-                        placeholder="IRQ-ID-..."
-                        className="w-full bg-[#050508] border border-[#262632] px-3 py-2 text-[#f4f0ea]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-[#888895] uppercase mb-1">
-                        Contact Number
-                      </label>
-                      <input
-                        type="text"
-                        value={ciContact}
-                        onChange={(e) => setCiContact(e.target.value)}
-                        className="w-full bg-[#050508] border border-[#262632] px-3 py-2 text-[#f4f0ea]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-[#888895] uppercase mb-1">
-                        Car Plate Number
-                      </label>
-                      <input
-                        type="text"
-                        value={ciCarNumber}
-                        onChange={(e) => setCiCarNumber(e.target.value)}
-                        placeholder="EBL / SLM Plate"
-                        className="w-full bg-[#050508] border border-[#262632] px-3 py-2 text-[#f4f0ea]"
-                      />
-                    </div>
-                  </div>
+            <button
+              onClick={toggleSimpleMode}
+              className="glass-pill px-4 py-2 rounded-full text-xs font-medium text-[#00f0ff] hover:border-[#00f0ff]/50 transition"
+            >
+              {user?.simpleMode ? 'Full Workspace Mode' : 'Easy Focus Mode'}
+            </button>
+          </div>
+        </div>
 
-                  {/* Extra Guests Builder */}
-                  <div className="p-3 bg-[#050508] border border-[#1c1c24] space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span>
-                        Automatic Guest Count:{' '}
-                        <strong className="text-[#d4af37]">{1 + ciExtraGuests.length}</strong>
+        {/* Sleek 5-Column Glassmorphic Telemetry Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-[#00e676]/30 shadow-[0_0_30px_rgba(0,230,118,0.06)]">
+            <div className="flex items-center justify-between text-xs text-white/55">
+              <span>Certified Ready</span>
+              <span className="w-2 h-2 rounded-full bg-[#00e676]" />
+            </div>
+            <div className="font-mono text-2xl font-semibold text-[#00e676] mt-1 tabular-nums">
+              {telemetry.readyRooms} <span className="text-xs text-white/40">/ {telemetry.totalRooms}</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-[#00f0ff]/30 shadow-[0_0_30px_rgba(0,240,255,0.06)]">
+            <div className="flex items-center justify-between text-xs text-white/55">
+              <span>Occupied ({telemetry.occupancyPercent}%)</span>
+              <span className="w-2 h-2 rounded-full bg-[#00f0ff]" />
+            </div>
+            <div className="font-mono text-2xl font-semibold text-[#00f0ff] mt-1 tabular-nums">
+              {telemetry.occupiedRooms}{' '}
+              <span className="text-xs text-[#d4af37]">({telemetry.vipOccupiedRooms} VIP)</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-[#ff9e2c]/30">
+            <div className="flex items-center justify-between text-xs text-white/55">
+              <span>Turnover / Inspect</span>
+              <span className="w-2 h-2 rounded-full bg-[#ff9e2c]" />
+            </div>
+            <div className="font-mono text-2xl font-semibold text-[#ff9e2c] mt-1 tabular-nums">
+              {telemetry.dirtyRooms} <span className="text-xs text-white/40">/ {telemetry.awaitingInspectionRooms} Insp</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-[#ff1e7a]/30">
+            <div className="flex items-center justify-between text-xs text-white/55">
+              <span>Out of Service</span>
+              <span className="w-2 h-2 rounded-full bg-[#ff1e7a]" />
+            </div>
+            <div className="font-mono text-2xl font-semibold text-[#ff1e7a] mt-1 tabular-nums">
+              {telemetry.outOfServiceRooms}{' '}
+              <span className="text-xs text-white/40">({telemetry.openMaintenanceCount} Tkt)</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-[#d4af37]/30 col-span-2 sm:col-span-1">
+            <div className="flex items-center justify-between text-xs text-white/55">
+              <span>Live Treasury</span>
+              <span className="font-mono text-[10px] text-[#d4af37]">1,310 IQD</span>
+            </div>
+            <div className="font-mono text-lg font-semibold text-[#d4af37] mt-1 tabular-nums truncate">
+              {telemetry.dualCurrencyRevenue.totalIqd.toLocaleString()} IQD
+            </div>
+            <div className="font-mono text-[11px] text-[#00e676] tabular-nums">
+              ≈ ${telemetry.dualCurrencyRevenue.totalUsd.toLocaleString()} USD
+            </div>
+          </div>
+        </div>
+
+        {/* Floating Module Navigation Pills */}
+        {!user?.simpleMode && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pt-1">
+            {(
+              [
+                { id: 'matrix', label: t.matrix, icon: BedDouble },
+                { id: 'checkin', label: t.checkin, icon: LogIn },
+                { id: 'housekeeping', label: t.housekeeping, icon: Sparkles },
+                { id: 'inspections', label: t.inspections, icon: ClipboardCheck },
+                { id: 'maintenance', label: t.maintenance, icon: Wrench },
+                { id: 'stays', label: t.stays, icon: Utensils },
+                { id: 'reports', label: t.reports, icon: FileBarChart },
+                { id: 'settings', label: t.settings, icon: Settings },
+              ] as const
+            ).map((mod) => {
+              const Icon = mod.icon;
+              const active = activeModule === mod.id;
+              return (
+                <button
+                  key={mod.id}
+                  onClick={() => setActiveModule(mod.id)}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-medium flex items-center gap-2 shrink-0 transition-all ${
+                    active
+                      ? 'bg-gradient-to-r from-[#d4af37] to-[#b89225] text-[#030305] font-semibold shadow-lg shadow-[#d4af37]/20'
+                      : 'bg-white/[0.03] hover:bg-white/[0.07] text-white/70 hover:text-white border border-white/5'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{mod.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* =====================================================================
+          MODULE 1: SPATIAL FLOOR MATRIX (FLOORS L1–L6) + AMBIENT GLOW CARDS
+      ===================================================================== */}
+      {activeModule === 'matrix' && (
+        <div className="space-y-6">
+          {/* Floor Selector Pills & Status Filter */}
+          <div className="glass-panel rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-white/50 mr-2">Floor Level:</span>
+              <button
+                onClick={() => setSelectedFloor('ALL')}
+                className={`px-4 py-2 rounded-full text-xs font-medium transition ${
+                  selectedFloor === 'ALL'
+                    ? 'bg-white text-[#030305] font-semibold shadow'
+                    : 'glass-pill text-white/70 hover:text-white'
+                }`}
+              >
+                All Floors L1–L6 (48)
+              </button>
+              {[1, 2, 3, 4, 5, 6].map((fl) => (
+                <button
+                  key={fl}
+                  onClick={() => setSelectedFloor(fl)}
+                  className={`px-4 py-2 rounded-full text-xs font-medium transition ${
+                    selectedFloor === fl
+                      ? 'bg-[#d4af37] text-[#030305] font-semibold shadow'
+                      : 'glass-pill text-white/70 hover:text-white'
+                  }`}
+                >
+                  Floor L{fl} ({fl}01–{fl}08)
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {(
+                [
+                  { id: 'ALL', label: 'All' },
+                  { id: 'READY', label: 'Ready', dot: 'bg-[#00e676]' },
+                  { id: 'OCCUPIED', label: 'Occupied', dot: 'bg-[#00f0ff]' },
+                  { id: 'DIRTY', label: 'Turnover', dot: 'bg-[#ff1e7a]' },
+                  { id: 'OOS', label: 'Out of Service', dot: 'bg-rose-500' },
+                ] as const
+              ).map((st) => (
+                <button
+                  key={st.id}
+                  onClick={() => setRoomStatusFilter(st.id)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs flex items-center gap-1.5 transition ${
+                    roomStatusFilter === st.id
+                      ? 'bg-white/15 border border-white/40 text-white font-medium'
+                      : 'bg-white/[0.03] border border-white/10 text-white/60 hover:text-white'
+                  }`}
+                >
+                  {'dot' in st && <span className={`w-2 h-2 rounded-full ${st.dot}`} />}
+                  <span>{st.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Spatial Grid of Glassmorphic Room Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {rooms
+              .filter((r) => (selectedFloor === 'ALL' ? true : r.floor === selectedFloor))
+              .filter((r) => {
+                if (roomStatusFilter === 'READY') return isRoomReady(r);
+                if (roomStatusFilter === 'OCCUPIED') return r.occupancyStatus === 'occupied';
+                if (roomStatusFilter === 'DIRTY')
+                  return r.housekeepingStatus !== 'clean' || r.inspectionStatus !== 'passed';
+                if (roomStatusFilter === 'OOS') return r.maintenanceStatus === 'out_of_service';
+                return true;
+              })
+              .map((rm) => {
+                const ready = isRoomReady(rm);
+                const isOos = rm.maintenanceStatus === 'out_of_service';
+                const isTurnover =
+                  rm.housekeepingStatus !== 'clean' || rm.inspectionStatus !== 'passed';
+
+                let glowStyle =
+                  'border-[#00e676]/35 shadow-[0_8px_30px_rgba(0,230,118,0.08)] hover:border-[#00e676]';
+                let badgeStyle = 'bg-[#00e676]/15 text-[#00e676] border-[#00e676]/30';
+                let statusLabel = 'Certified Ready';
+
+                if (isOos) {
+                  glowStyle =
+                    'border-[#ff1e7a]/50 shadow-[0_8px_30px_rgba(255,30,122,0.14)] hover:border-[#ff1e7a]';
+                  badgeStyle = 'bg-[#ff1e7a]/20 text-[#ff1e7a] border-[#ff1e7a]/40';
+                  statusLabel = 'Out of Service';
+                } else if (rm.occupancyStatus === 'occupied') {
+                  if (rm.isVip) {
+                    glowStyle =
+                      'border-[#d4af37]/45 shadow-[0_8px_30px_rgba(212,175,55,0.12)] hover:border-[#d4af37]';
+                    badgeStyle = 'bg-[#d4af37]/20 text-[#d4af37] border-[#d4af37]/40';
+                    statusLabel = 'VIP Occupied';
+                  } else {
+                    glowStyle =
+                      'border-[#00f0ff]/35 shadow-[0_8px_30px_rgba(0,240,255,0.08)] hover:border-[#00f0ff]';
+                    badgeStyle = 'bg-[#00f0ff]/15 text-[#00f0ff] border-[#00f0ff]/30';
+                    statusLabel = 'Occupied';
+                  }
+                } else if (isTurnover) {
+                  glowStyle =
+                    'border-[#ff1e7a]/40 shadow-[0_8px_30px_rgba(255,30,122,0.1)] hover:border-[#ff1e7a]';
+                  badgeStyle = 'bg-[#ff1e7a]/15 text-[#ff85b3] border-[#ff1e7a]/30';
+                  statusLabel =
+                    rm.inspectionStatus === 'awaiting_inspection'
+                      ? 'Awaiting Inspect'
+                      : 'Urgent Turnover';
+                }
+
+                return (
+                  <div
+                    key={rm.roomNumber}
+                    onClick={() => setInspectedRoomNumber(rm.roomNumber)}
+                    className={`group cursor-pointer rounded-3xl glass-panel p-5 border transition-all duration-300 hover:-translate-y-0.5 ${glowStyle}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-[10px] font-mono uppercase tracking-wider text-white/45">
+                          Floor L{rm.floor} • {rm.roomType}
+                        </div>
+                        <div className="font-serif text-3xl text-white font-normal mt-0.5 tabular-nums">
+                          Suite {rm.roomNumber}
+                        </div>
+                      </div>
+                      <span
+                        className={`px-2.5 py-1 rounded-full border text-[10px] font-medium ${badgeStyle}`}
+                      >
+                        {statusLabel}
                       </span>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+                      <div className="truncate max-w-[160px] text-white/75">
+                        {rm.currentGuestName ? (
+                          <span className="font-medium text-white">{rm.currentGuestName}</span>
+                        ) : (
+                          <span className="text-white/40">Vacant Sanctuary</span>
+                        )}
+                      </div>
+                      <span className="font-mono text-[11px] text-white/55 tabular-nums">
+                        {rm.hvacTempC.toFixed(1)}°C
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODULE 2: RECEPTION CHECK-IN / CHECK-OUT
+      ===================================================================== */}
+      {activeModule === 'checkin' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left 7 Cols: Check-In Form */}
+          <div className="lg:col-span-7 glass-panel rounded-3xl p-7 space-y-6">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <div className="text-xs text-[#00e676] uppercase tracking-wider">
+                  Strict Ready-Room Gate
+                </div>
+                <h3 className="font-serif text-3xl text-white mt-0.5">
+                  Guest Arrival & Check-In
+                </h3>
+              </div>
+              <span className="px-4 py-1.5 rounded-full bg-[#00e676]/15 border border-[#00e676]/40 text-[#00e676] font-mono text-xs font-semibold tabular-nums">
+                {t.readyRoomsLabel}: {readyRooms.length}
+              </span>
+            </div>
+
+            {readyRooms.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-[#ff1e7a]/15 border border-[#ff1e7a]/40 text-[#ff85b3] text-sm">
+                {t.noRoomsReady}
+              </div>
+            ) : (
+              <form onSubmit={handleCheckInSubmit} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-white/60 mb-1.5">
+                    Select Certified Ready Suite
+                  </label>
+                  <select
+                    value={effectiveSelectedReadyRoom}
+                    onChange={(e) => setSelectedReadyRoom(e.target.value)}
+                    className="w-full rounded-2xl bg-white/[0.05] border border-[#00e676]/50 px-4 py-3 text-sm text-white outline-none"
+                  >
+                    {readyRooms.map((r) => (
+                      <option key={r.roomNumber} value={r.roomNumber} className="bg-[#08080c]">
+                        Suite {r.roomNumber} (Floor L{r.floor} — {r.roomType}) —{' '}
+                        {r.baseRateIqd.toLocaleString()} IQD
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-white/60 mb-1">Main Guest Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={ciName}
+                      onChange={(e) => setCiName(e.target.value)}
+                      placeholder="Full Name"
+                      className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-2.5 text-white outline-none focus:border-[#d4af37]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-white/60 mb-1">Passport / National ID *</label>
+                    <input
+                      type="text"
+                      required
+                      value={ciIdNumber}
+                      onChange={(e) => setCiIdNumber(e.target.value)}
+                      placeholder="IRQ-ID-..."
+                      className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-2.5 text-white outline-none focus:border-[#d4af37]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-white/60 mb-1">Contact / WhatsApp</label>
+                    <input
+                      type="text"
+                      value={ciContact}
+                      onChange={(e) => setCiContact(e.target.value)}
+                      className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-2.5 text-white outline-none focus:border-[#d4af37]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-white/60 mb-1">Vehicle Plate</label>
+                    <input
+                      type="text"
+                      value={ciCarNumber}
+                      onChange={(e) => setCiCarNumber(e.target.value)}
+                      placeholder="EBL / SLM"
+                      className="w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-2.5 text-white outline-none focus:border-[#d4af37]"
+                    />
+                  </div>
+                </div>
+
+                {/* Extra Guests */}
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/70">
+                      Total Guests in Suite:{' '}
+                      <strong className="text-[#d4af37] font-mono">
+                        {1 + ciExtraGuests.length}
+                      </strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCiExtraGuests((prev) => [
+                          ...prev,
+                          { id: `eg-${Date.now()}-${prev.length}`, fullName: '', idNumber: '' },
+                        ])
+                      }
+                      className="px-3.5 py-1.5 rounded-full glass-pill text-[#d4af37] flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Companion
+                    </button>
+                  </div>
+                  {ciExtraGuests.map((eg, i) => (
+                    <div key={eg.id} className="grid grid-cols-12 gap-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder={`Companion #${i + 2} Full Name *`}
+                        value={eg.fullName}
+                        onChange={(e) =>
+                          setCiExtraGuests((prev) =>
+                            prev.map((item) =>
+                              item.id === eg.id ? { ...item, fullName: e.target.value } : item
+                            )
+                          )
+                        }
+                        className="col-span-5 rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-white"
+                      />
+                      <input
+                        type="text"
+                        required
+                        placeholder={`ID Number *`}
+                        value={eg.idNumber}
+                        onChange={(e) =>
+                          setCiExtraGuests((prev) =>
+                            prev.map((item) =>
+                              item.id === eg.id ? { ...item, idNumber: e.target.value } : item
+                            )
+                          )
+                        }
+                        className="col-span-5 rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-white"
+                      />
                       <button
                         type="button"
                         onClick={() =>
-                          setCiExtraGuests((prev) => [
-                            ...prev,
-                            { id: `eg-${Date.now()}-${prev.length}`, fullName: '', idNumber: '' },
-                          ])
+                          setCiExtraGuests((prev) => prev.filter((item) => item.id !== eg.id))
                         }
-                        className="px-3 py-1.5 bg-[#14141e] border border-[#d4af37] text-[#d4af37] font-bold uppercase flex items-center gap-1"
+                        className="col-span-2 rounded-xl bg-[#ff1e7a]/20 text-[#ff1e7a] flex items-center justify-center"
                       >
-                        <Plus className="w-3.5 h-3.5" /> Add another guest
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    {ciExtraGuests.map((eg, i) => (
-                      <div key={eg.id} className="grid grid-cols-12 gap-2">
-                        <input
-                          type="text"
-                          required
-                          placeholder={`Extra Guest #${i + 2} Full Name *`}
-                          value={eg.fullName}
-                          onChange={(e) =>
-                            setCiExtraGuests((prev) =>
-                              prev.map((item) =>
-                                item.id === eg.id ? { ...item, fullName: e.target.value } : item
-                              )
-                            )
-                          }
-                          className="col-span-5 bg-[#0a0a0e] border border-[#262632] px-2 py-1.5"
-                        />
-                        <input
-                          type="text"
-                          required
-                          placeholder={`Extra Guest #${i + 2} ID Number *`}
-                          value={eg.idNumber}
-                          onChange={(e) =>
-                            setCiExtraGuests((prev) =>
-                              prev.map((item) =>
-                                item.id === eg.id ? { ...item, idNumber: e.target.value } : item
-                              )
-                            )
-                          }
-                          className="col-span-5 bg-[#0a0a0e] border border-[#262632] px-2 py-1.5"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCiExtraGuests((prev) => prev.filter((item) => item.id !== eg.id))
-                          }
-                          className="col-span-2 bg-[#ff1e7a]/20 border border-[#ff1e7a] text-[#ff1e7a] flex items-center justify-center"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  ))}
+                </div>
 
-                  {/* Discount % & Price Summary */}
-                  <div className="grid grid-cols-3 gap-3 p-3 bg-[#050508] border border-[#1c1c24]">
-                    <div>
-                      <label className="block text-[10px] text-[#888895]">Discount % Paid</label>
-                      <input
-                        type="number"
-                        min={10}
-                        max={100}
-                        value={ciDiscountPct}
-                        onChange={(e) => setCiDiscountPct(Number(e.target.value) || 100)}
-                        className="mt-1 w-full bg-[#0a0a0e] border border-[#262632] px-2 py-1 text-[#d4af37]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-[#888895]">Channel</label>
-                      <select
-                        value={ciChannel}
-                        onChange={(e) => setCiChannel(e.target.value as BookingChannel)}
-                        className="mt-1 w-full bg-[#0a0a0e] border border-[#262632] px-2 py-1"
-                      >
-                        <option value="Walk_In_VIP">Walk_In_VIP</option>
-                        <option value="Direct_Web">Direct_Web</option>
-                        <option value="Booking_OTA">Booking_OTA</option>
-                        <option value="Embassy_Corp">Embassy_Corp</option>
-                        <option value="Airport_Transfer">Airport_Transfer</option>
-                      </select>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-[#888895]">
-                        Full: {fullCheckinPrice.toLocaleString()} IQD ({ciDiscountPct}%)
-                      </div>
-                      <div className="text-sm font-bold text-[#00e676] mt-1">
-                        Pays: {finalCheckinPay.toLocaleString()} IQD
-                      </div>
-                    </div>
+                {/* Tariff Summary */}
+                <div className="grid grid-cols-3 gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                  <div>
+                    <label className="block text-white/50 mb-1">Guest Pays %</label>
+                    <input
+                      type="number"
+                      min={10}
+                      max={100}
+                      value={ciDiscountPct}
+                      onChange={(e) => setCiDiscountPct(Number(e.target.value) || 100)}
+                      className="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 font-mono text-[#d4af37]"
+                    />
                   </div>
-
-                  {ciMessage && (
-                    <div
-                      className={`p-3 border ${
-                        ciMessage.ok
-                          ? 'bg-[#00e676]/10 border-[#00e676] text-[#00e676]'
-                          : 'bg-[#ff1e7a]/10 border-[#ff1e7a] text-[#ff1e7a]'
-                      }`}
+                  <div>
+                    <label className="block text-white/50 mb-1">Channel</label>
+                    <select
+                      value={ciChannel}
+                      onChange={(e) => setCiChannel(e.target.value as BookingChannel)}
+                      className="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-white"
                     >
-                      {ciMessage.text}
+                      <option value="Walk_In_VIP" className="bg-[#08080c]">Walk_In_VIP</option>
+                      <option value="Direct_Web" className="bg-[#08080c]">Direct_Web</option>
+                      <option value="Booking_OTA" className="bg-[#08080c]">Booking_OTA</option>
+                      <option value="Embassy_Corp" className="bg-[#08080c]">Embassy_Corp</option>
+                      <option value="Airport_Transfer" className="bg-[#08080c]">Airport_Transfer</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col justify-center text-right font-mono">
+                    <div className="text-[11px] text-white/45">
+                      Full: {fullCheckinPrice.toLocaleString()} IQD
                     </div>
-                  )}
+                    <div className="text-sm font-semibold text-[#00e676] tabular-nums">
+                      Pays: {finalCheckinPay.toLocaleString()} IQD
+                    </div>
+                  </div>
+                </div>
 
-                  <button
-                    type="submit"
-                    className="w-full py-3 bg-[#00e676] hover:bg-[#2ef08d] text-[#030305] font-bold uppercase tracking-widest"
+                {ciMessage && (
+                  <div
+                    className={`p-4 rounded-2xl border ${
+                      ciMessage.ok
+                        ? 'bg-[#00e676]/15 border-[#00e676]/40 text-[#69f0ae]'
+                        : 'bg-[#ff1e7a]/15 border-[#ff1e7a]/40 text-[#ff85b3]'
+                    }`}
                   >
-                    CONFIRM CHECK-IN TO ROOM {effectiveSelectedReadyRoom}
-                  </button>
-                </form>
-              )}
+                    {ciMessage.text}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#00e676] to-[#00b85c] text-[#030305] font-semibold uppercase tracking-[0.16em] shadow-lg transition"
+                >
+                  Complete Check-In • Suite {effectiveSelectedReadyRoom}
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* Right 5 Cols: Active In-House Check-Out List */}
+          <div className="lg:col-span-5 glass-panel rounded-3xl p-7 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <h3 className="font-serif text-2xl text-white">{t.inHouseCheckout}</h3>
+              <span className="font-mono text-xs text-[#00f0ff] tabular-nums">
+                {occupiedRooms.length} Active
+              </span>
             </div>
 
-            {/* Right 5 Cols: In House Now — Check Out */}
-            <div className="lg:col-span-5 bg-[#0a0a0e] border border-[#1c1c24] p-6 space-y-4">
-              <div className="flex items-center justify-between border-b border-[#181820] pb-3">
-                <h3 className="font-serif text-xl text-[#f4f0ea]">{t.inHouseCheckout}</h3>
-                <span className="font-mono text-xs text-[#00f0ff]">
-                  Occupied: {occupiedRooms.length}
-                </span>
-              </div>
-
-              <div className="space-y-2.5 max-h-[540px] overflow-y-auto pr-1 font-mono text-xs">
-                {occupiedRooms.map((rm) => (
-                  <div
-                    key={rm.roomNumber}
-                    className="p-3 bg-[#050508] border border-[#1e1e28] flex items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-[#00f0ff]">RM {rm.roomNumber}</span>
-                        <span className="text-[#f4f0ea] font-semibold">
-                          {rm.currentGuestName}
-                        </span>
-                      </div>
-                      {canSeePrivateGuestDetails && (
-                        <div className="text-[10px] text-[#888895] mt-0.5">
-                          ID: {rm.currentGuestIdNumber} | Guests: {1 + rm.extraGuests.length} |{' '}
-                          {rm.discountPayPercent}% Rate
-                        </div>
-                      )}
+            <div className="space-y-3 max-h-[540px] overflow-y-auto pr-1">
+              {occupiedRooms.map((rm) => (
+                <div
+                  key={rm.roomNumber}
+                  className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-semibold text-[#00f0ff]">
+                        Suite {rm.roomNumber}
+                      </span>
+                      <span className="text-sm text-white font-medium">
+                        {rm.currentGuestName}
+                      </span>
                     </div>
-                    <button
-                      onClick={() => checkOutRoom(rm.roomNumber)}
-                      className="px-3 py-1.5 bg-[#ff8a3d] hover:bg-[#ffa05d] text-[#030305] font-bold uppercase text-[10px] shrink-0"
-                    >
-                      Check Out
-                    </button>
+                    {canSeePrivateGuestDetails && (
+                      <div className="text-[11px] text-white/45 font-mono mt-1">
+                        ID: {rm.currentGuestIdNumber} • Guests: {1 + rm.extraGuests.length} •{' '}
+                        {rm.discountPayPercent}% Tariff
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
+                  <button
+                    onClick={() => checkOutRoom(rm.roomNumber)}
+                    className="px-4 py-2 rounded-xl bg-[#ff9e2c]/20 hover:bg-[#ff9e2c] text-[#ff9e2c] hover:text-[#030305] border border-[#ff9e2c]/40 text-xs font-semibold transition shrink-0"
+                  >
+                    Check Out
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* MODULE 4: HOUSEKEEPING */}
-        {activeModule === 'housekeeping' && (
-          <div className="space-y-4">
-            <h3 className="font-serif text-2xl text-[#f4f0ea]">
-              Housekeeping Cleaning Queue (Cleaned Rooms Move to Awaiting Inspection)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
+      {/* =====================================================================
+          MODULE 3 & 4: HOUSEKEEPING & SUPERVISOR INSPECTIONS
+      ===================================================================== */}
+      {(activeModule === 'housekeeping' || activeModule === 'inspections') && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Housekeeping Queue */}
+          <div className="glass-panel rounded-3xl p-7 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <h3 className="font-serif text-2xl text-white">Housekeeping Turnover Queue</h3>
+              <span className="px-3 py-1 rounded-full bg-[#ff9e2c]/15 text-[#ff9e2c] font-mono text-xs">
+                {rooms.filter((r) => r.housekeepingStatus !== 'clean').length} Rooms
+              </span>
+            </div>
+            <div className="space-y-3">
               {rooms
                 .filter((r) => r.housekeepingStatus !== 'clean' || r.inspectionStatus === 'failed')
                 .map((rm) => (
                   <div
                     key={rm.roomNumber}
-                    className="p-4 bg-[#0a0a0e] border border-[#ff8a3d]/50 space-y-3"
+                    className="p-4 rounded-2xl bg-white/[0.03] border border-[#ff9e2c]/30 flex items-center justify-between gap-4"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-bold text-[#f4f0ea]">Room {rm.roomNumber}</span>
-                      <span className="px-2 py-0.5 bg-[#ff8a3d]/20 text-[#ff8a3d] uppercase text-[10px]">
-                        {rm.housekeepingStatus}
-                      </span>
+                    <div>
+                      <div className="font-serif text-2xl text-white">Suite {rm.roomNumber}</div>
+                      <div className="text-xs text-white/55">
+                        Floor L{rm.floor} • {rm.roomType} • Status: {rm.housekeepingStatus}
+                      </div>
                     </div>
-                    <div className="text-[#888895]">
-                      Floor {rm.floor} // {rm.roomType}
-                    </div>
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex gap-2">
                       {rm.housekeepingStatus === 'dirty' && (
                         <button
                           onClick={() => markCleaningStarted(rm.roomNumber)}
-                          className="flex-1 py-2.5 bg-[#00f0ff] text-[#030305] font-bold uppercase"
+                          className="px-4 py-2 rounded-xl bg-[#00f0ff]/20 border border-[#00f0ff] text-[#00f0ff] text-xs font-semibold"
                         >
-                          Start Cleaning
+                          Start Clean
                         </button>
                       )}
                       <button
                         onClick={() => markCleaningFinishedAwaitingInspection(rm.roomNumber)}
-                        className="flex-1 py-2.5 bg-[#00e676] text-[#030305] font-bold uppercase"
+                        className="px-4 py-2 rounded-xl bg-[#00e676] text-[#030305] text-xs font-semibold"
                       >
-                        Mark Cleaning Done
+                        Mark Cleaned
                       </button>
                     </div>
                   </div>
                 ))}
             </div>
           </div>
-        )}
 
-        {/* MODULE 5: SUPERVISOR INSPECTIONS */}
-        {activeModule === 'inspections' && (
-          <div className="space-y-4">
-            <h3 className="font-serif text-2xl text-[#f4f0ea]">
-              Supervisor Room Inspections (Pass = Certified Ready | Fail = Return to Housekeeping)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
+          {/* Supervisor Inspection Queue */}
+          <div className="glass-panel rounded-3xl p-7 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <h3 className="font-serif text-2xl text-white">Supervisor Purity Certification</h3>
+              <span className="px-3 py-1 rounded-full bg-[#d4af37]/15 text-[#d4af37] font-mono text-xs">
+                {rooms.filter((r) => r.inspectionStatus === 'awaiting_inspection').length} Awaiting
+              </span>
+            </div>
+            <div className="space-y-3">
               {rooms
                 .filter((r) => r.inspectionStatus === 'awaiting_inspection')
                 .map((rm) => (
                   <div
                     key={rm.roomNumber}
-                    className="p-4 bg-[#0a0a0e] border border-[#d4af37]/50 space-y-3"
+                    className="p-4 rounded-2xl bg-white/[0.03] border border-[#d4af37]/30 flex items-center justify-between gap-4"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-bold text-[#f4f0ea]">Room {rm.roomNumber}</span>
-                      <span className="px-2 py-0.5 bg-[#d4af37]/20 text-[#d4af37] text-[10px]">
-                        AWAITING INSPECTION
-                      </span>
+                    <div>
+                      <div className="font-serif text-2xl text-white">Suite {rm.roomNumber}</div>
+                      <div className="text-xs text-white/55">
+                        Housekeeping: {rm.housekeepingStatus} • Ready upon Pass
+                      </div>
                     </div>
-                    <div className="text-[#888895]">
-                      Housekeeping Status: {rm.housekeepingStatus.toUpperCase()}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 pt-2">
+                    <div className="flex gap-2">
                       <button
                         onClick={() => inspectRoomVerdict(rm.roomNumber, 'passed')}
-                        className="py-2.5 bg-[#00e676] text-[#030305] font-bold uppercase"
+                        className="px-4 py-2 rounded-xl bg-[#00e676] text-[#030305] text-xs font-semibold"
                       >
-                        ✓ PASSED (MAKE READY)
+                        ✓ Pass Ready
                       </button>
                       <button
                         onClick={() => inspectRoomVerdict(rm.roomNumber, 'failed')}
-                        className="py-2.5 bg-[#ff1e7a] text-[#f4f0ea] font-bold uppercase"
+                        className="px-4 py-2 rounded-xl bg-[#ff1e7a]/20 border border-[#ff1e7a] text-[#ff1e7a] text-xs font-semibold"
                       >
-                        ✕ FAILED (RE-CLEAN)
+                        ✕ Fail
                       </button>
                     </div>
                   </div>
                 ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* MODULE 6: DAMAGE / MAINTENANCE — BIG BUTTONS ONLY */}
-        {activeModule === 'maintenance' && (
-          <div className="space-y-6 font-mono">
-            {/* Tap-Only Damage Reporter */}
-            <div className="p-5 bg-[#0a0a0e] border border-[#1c1c24] space-y-4">
-              <h3 className="font-serif text-2xl text-[#f4f0ea] font-sans">
-                Report Damage — Big Tap Workflow
-              </h3>
+      {/* =====================================================================
+          MODULE 5: MAINTENANCE & ENGINEERING
+      ===================================================================== */}
+      {activeModule === 'maintenance' && (
+        <div className="space-y-6">
+          <div className="glass-panel rounded-3xl p-7 space-y-5">
+            <h3 className="font-serif text-2xl text-white">
+              Quick-Tap Engineering & Maintenance Dispatch
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {rooms.map((r) => (
+                <button
+                  key={r.roomNumber}
+                  onClick={() => setDmgRoom(r.roomNumber)}
+                  className={`px-3 py-1.5 rounded-xl font-mono text-xs transition ${
+                    dmgRoom === r.roomNumber
+                      ? 'bg-[#d4af37] text-[#030305] font-semibold'
+                      : 'bg-white/[0.04] text-white/60 hover:text-white'
+                  }`}
+                >
+                  {r.roomNumber}
+                </button>
+              ))}
+            </div>
 
-              <div>
-                <div className="text-[10px] text-[#888895] uppercase mb-1.5">1. Tap the Room</div>
-                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
-                  {rooms.map((r) => (
-                    <button
-                      key={r.roomNumber}
-                      type="button"
-                      onClick={() => setDmgRoom(r.roomNumber)}
-                      className={`px-2.5 py-1 text-xs border ${
-                        dmgRoom === r.roomNumber
-                          ? 'bg-[#d4af37] text-[#030305] border-[#d4af37] font-bold'
-                          : 'bg-[#050508] text-[#888895] border-[#22222c]'
-                      }`}
-                    >
-                      {r.roomNumber}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+              {(
+                [
+                  'HVAC / Climate',
+                  'Plumbing / Water',
+                  'Electrical / Lighting',
+                  'Smart Keycard Lock',
+                  'Furniture / Glazing',
+                ] as const
+              ).map((pt) => (
+                <button
+                  key={pt}
+                  onClick={() => setDmgProblem(pt)}
+                  className={`p-3 rounded-2xl border font-medium transition ${
+                    dmgProblem === pt
+                      ? 'bg-[#00f0ff]/20 border-[#00f0ff] text-white'
+                      : 'bg-white/[0.03] border-white/10 text-white/65'
+                  }`}
+                >
+                  {pt}
+                </button>
+              ))}
+            </div>
 
-              <div>
-                <div className="text-[10px] text-[#888895] uppercase mb-1.5">
-                  2. Tap the Problem Type
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                  {(
-                    [
-                      'HVAC / Climate',
-                      'Plumbing / Water',
-                      'Electrical / Lighting',
-                      'Smart Keycard Lock',
-                      'Furniture / Glazing',
-                    ] as const
-                  ).map((pt) => (
-                    <button
-                      key={pt}
-                      type="button"
-                      onClick={() => setDmgProblem(pt)}
-                      className={`p-2.5 border font-bold ${
-                        dmgProblem === pt
-                          ? 'bg-[#00f0ff] text-[#030305] border-[#00f0ff]'
-                          : 'bg-[#050508] text-[#f4f0ea] border-[#262632]'
-                      }`}
-                    >
-                      {pt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[10px] text-[#888895] uppercase mb-1.5">
-                  3. Tap the Priority
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                  {(
-                    [
-                      { id: 'low', label: 'LOW PRIORITY' },
-                      { id: 'medium', label: 'MEDIUM PRIORITY' },
-                      { id: 'high', label: 'HIGH PRIORITY' },
-                      { id: 'critical_oos', label: 'CRITICAL (MARK OUT OF SERVICE)' },
-                    ] as const
-                  ).map((pr) => (
-                    <button
-                      key={pr.id}
-                      type="button"
-                      onClick={() => setDmgPriority(pr.id)}
-                      className={`p-2.5 border font-bold ${
-                        dmgPriority === pr.id
-                          ? 'bg-[#ff1e7a] text-[#f4f0ea] border-[#ff1e7a]'
-                          : 'bg-[#050508] text-[#888895] border-[#262632]'
-                      }`}
-                    >
-                      {pr.label}
-                    </button>
-                  ))}
-                </div>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex gap-2 text-xs">
+                {(
+                  [
+                    { id: 'low', label: 'Low' },
+                    { id: 'medium', label: 'Medium' },
+                    { id: 'high', label: 'High' },
+                    { id: 'critical_oos', label: 'Critical (Out of Service)' },
+                  ] as const
+                ).map((pr) => (
+                  <button
+                    key={pr.id}
+                    onClick={() => setDmgPriority(pr.id)}
+                    className={`px-4 py-2 rounded-xl border ${
+                      dmgPriority === pr.id
+                        ? 'bg-[#ff1e7a] border-[#ff1e7a] text-white font-semibold'
+                        : 'bg-white/[0.03] border-white/10 text-white/60'
+                    }`}
+                  >
+                    {pr.label}
+                  </button>
+                ))}
               </div>
 
               <button
-                type="button"
                 onClick={() => {
                   reportDamageTicket({
                     roomNumber: dmgRoom,
@@ -1131,321 +986,333 @@ export const StandardOpsDashboard: React.FC = () => {
                     note: dmgNote,
                     reportedBy: user?.fullName || 'Staff',
                   });
-                  setDmgNote('');
-                  setMaintNotice(`Damage ticket created for Room ${dmgRoom}`);
+                  setMaintNotice(`Ticket logged for Suite ${dmgRoom}`);
                 }}
-                className="w-full py-3.5 bg-[#ff1e7a] hover:bg-[#ff398b] text-[#f4f0ea] font-bold text-sm uppercase tracking-widest"
+                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-[#ff1e7a] to-rose-600 text-white text-xs font-semibold uppercase tracking-wider shadow-lg"
               >
-                4. REPORT DAMAGE (ROOM {dmgRoom})
+                Dispatch Ticket • Suite {dmgRoom}
               </button>
             </div>
+          </div>
 
-            {maintNotice && (
-              <div className="p-3 bg-[#d4af37]/15 border border-[#d4af37] text-[#d4af37] text-xs">
-                {maintNotice}
+          {maintNotice && (
+            <div className="p-4 rounded-2xl bg-[#d4af37]/15 border border-[#d4af37]/40 text-[#d4af37] text-xs">
+              {maintNotice}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {maintenanceTickets.map((tkt) => (
+              <div key={tkt.id} className="glass-panel rounded-3xl p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-serif text-2xl text-white">
+                    Suite {tkt.roomNumber} • {tkt.problemType}
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-[#ff1e7a]/20 text-[#ff85b3] font-mono text-xs">
+                    {tkt.status}
+                  </span>
+                </div>
+                <p className="text-xs text-white/60">{tkt.note}</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <button
+                    onClick={() => {
+                      const r = updateMaintenanceTicketStatus(tkt.id, 'working_on_it', role);
+                      setMaintNotice(r.message);
+                    }}
+                    className="py-2 rounded-xl bg-blue-500/20 border border-blue-400 text-blue-200 font-medium"
+                  >
+                    Working on it
+                  </button>
+                  <button
+                    onClick={() => {
+                      const r = updateMaintenanceTicketStatus(tkt.id, 'fixed_awaiting_check', role);
+                      setMaintNotice(r.message);
+                    }}
+                    className="py-2 rounded-xl bg-emerald-500/20 border border-emerald-400 text-emerald-200 font-medium"
+                  >
+                    Fixed
+                  </button>
+                  <button
+                    onClick={() => {
+                      const r = updateMaintenanceTicketStatus(tkt.id, 'out_of_service', role);
+                      setMaintNotice(r.message);
+                    }}
+                    className="py-2 rounded-xl bg-rose-500/20 border border-rose-400 text-rose-200 font-medium"
+                  >
+                    Out of Service
+                  </button>
+                  <button
+                    onClick={() => {
+                      const r = updateMaintenanceTicketStatus(tkt.id, 'needs_parts', role);
+                      setMaintNotice(r.message);
+                    }}
+                    className="py-2 rounded-xl bg-amber-500/20 border border-amber-400 text-amber-200 font-medium"
+                  >
+                    Needs Parts
+                  </button>
+                </div>
+                {(role === 'executive' || role === 'front_desk') && (
+                  <button
+                    onClick={() => {
+                      const r = updateMaintenanceTicketStatus(tkt.id, 'checked_ok', role);
+                      setMaintNotice(r.message);
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-[#00e676] text-[#030305] text-xs font-semibold"
+                  >
+                    Supervisor Checked — OK (Close & Release Room)
+                  </button>
+                )}
               </div>
-            )}
+            ))}
+          </div>
+        </div>
+      )}
 
-            {/* Active Tickets with 4 Big Status Buttons + Supervisor Checked-OK */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {maintenanceTickets.map((tkt) => (
-                <div
-                  key={tkt.id}
-                  className="p-4 bg-[#0a0a0e] border border-[#262632] space-y-3 text-xs"
+      {/* =====================================================================
+          MODULE 6, 7, 8: STAYS, DAILY AUDIT & SETTINGS
+      ===================================================================== */}
+      {activeModule === 'stays' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {roomServiceOrders.map((ord) => (
+            <div key={ord.id} className="glass-panel rounded-3xl p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-serif text-2xl text-[#d4af37]">Suite {ord.roomNumber}</span>
+                <span className="px-3 py-1 rounded-full bg-[#00f0ff]/15 text-[#00f0ff] font-mono text-xs uppercase">
+                  {ord.status}
+                </span>
+              </div>
+              <div className="text-sm text-white">{ord.guestName}</div>
+              <div className="font-mono text-sm text-[#00e676] tabular-nums">
+                {ord.totalIqd.toLocaleString()} IQD (${ord.totalUsd})
+              </div>
+              <button
+                onClick={() => advanceRoomServiceStatus(ord.id)}
+                className="w-full py-2.5 rounded-xl bg-white/[0.08] hover:bg-[#d4af37] text-white hover:text-[#030305] text-xs font-semibold transition"
+              >
+                Advance Culinary Stage →
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeModule === 'reports' && (
+        <div className="glass-panel rounded-3xl p-7 space-y-5">
+          <h3 className="font-serif text-3xl text-white">
+            Official Daily Operational & Treasury Audit
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {occupiedRooms.map((r) => (
+              <div
+                key={r.roomNumber}
+                className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between text-xs"
+              >
+                <div>
+                  <span className="font-mono font-semibold text-[#00f0ff]">
+                    Suite {r.roomNumber}:
+                  </span>{' '}
+                  <span className="text-white">{r.currentGuestName}</span>
+                  {canSeePrivateGuestDetails && r.extraGuests.length > 0 && (
+                    <span className="text-[#d4af37] ml-2">
+                      (+{r.extraGuests.length} Companions)
+                    </span>
+                  )}
+                </div>
+                {canSeePrivateGuestDetails && (
+                  <span className="font-mono text-white/50">{r.currentGuestIdNumber}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeModule === 'settings' && (
+        <div className="glass-panel rounded-3xl p-7 space-y-6">
+          <h3 className="font-serif text-3xl text-white">
+            Tariff Configuration & Encrypted Backup Vault
+          </h3>
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-xs text-white/60 mb-1.5">
+                Standard Owner Tariff (IQD)
+              </label>
+              <input
+                type="number"
+                value={ownerBasePriceIqd}
+                onChange={(e) => setOwnerBasePriceIqd(Number(e.target.value) || 100000)}
+                className="rounded-xl bg-white/[0.05] border border-[#d4af37]/50 px-4 py-2.5 font-mono text-sm text-[#d4af37]"
+              />
+            </div>
+            <button
+              onClick={handleDownloadBackup}
+              className="px-5 py-2.5 rounded-xl bg-[#00e676] text-[#030305] text-xs font-semibold flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" /> Export JSON Backup
+            </button>
+            <label className="px-5 py-2.5 rounded-xl bg-[#00f0ff] text-[#030305] text-xs font-semibold flex items-center gap-2 cursor-pointer">
+              <Upload className="w-4 h-4" /> Restore Backup
+              <input type="file" accept=".json" onChange={handleUploadBackup} className="hidden" />
+            </label>
+          </div>
+          {settingsMsg && (
+            <div className="p-4 rounded-2xl bg-[#00e676]/15 border border-[#00e676]/40 text-[#69f0ae] text-xs">
+              {settingsMsg}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* =====================================================================
+          SLIDE-OVER ROOM INSPECTOR DRAWER
+      ===================================================================== */}
+      {inspectedRoom && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-md">
+          <div className="w-full max-w-md h-full glass-panel border-l border-white/15 p-7 flex flex-col justify-between overflow-y-auto">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div>
+                  <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#d4af37]">
+                    {inspectedRoom.floorZone}
+                  </div>
+                  <h3 className="font-serif text-3xl text-white mt-0.5">
+                    Suite {inspectedRoom.roomNumber} Inspector
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setInspectedRoomNumber(null)}
+                  className="w-9 h-9 rounded-full glass-pill flex items-center justify-center text-white/60 hover:text-white"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-base font-bold text-[#f4f0ea]">
-                      RM {tkt.roomNumber} // {tkt.problemType}
-                    </span>
-                    <span className="px-2 py-0.5 bg-[#ff1e7a]/20 text-[#ff1e7a] uppercase text-[10px]">
-                      {tkt.status}
-                    </span>
-                  </div>
-                  <p className="text-[#888895]">{tkt.note}</p>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-                  {/* 4 BIG BUTTONS */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      onClick={() => {
-                        const r = updateMaintenanceTicketStatus(tkt.id, 'working_on_it', role);
-                        setMaintNotice(r.message);
-                      }}
-                      className="py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase"
-                    >
-                      Working on it
-                    </button>
-                    <button
-                      onClick={() => {
-                        const r = updateMaintenanceTicketStatus(
-                          tkt.id,
-                          'fixed_awaiting_check',
-                          role
-                        );
-                        setMaintNotice(r.message);
-                      }}
-                      className="py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold uppercase"
-                    >
-                      Fixed (Send for Check)
-                    </button>
-                    <button
-                      onClick={() => {
-                        const r = updateMaintenanceTicketStatus(tkt.id, 'out_of_service', role);
-                        setMaintNotice(r.message);
-                      }}
-                      className="py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold uppercase"
-                    >
-                      Out of service
-                    </button>
-                    <button
-                      onClick={() => {
-                        const r = updateMaintenanceTicketStatus(tkt.id, 'needs_parts', role);
-                        setMaintNotice(r.message);
-                      }}
-                      className="py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold uppercase"
-                    >
-                      Needs parts
-                    </button>
+              {/* Status Pills */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10">
+                  <div className="text-white/45">Occupancy</div>
+                  <div className="text-white font-semibold uppercase mt-1">
+                    {inspectedRoom.occupancyStatus}
                   </div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10">
+                  <div className="text-white/45">Housekeeping</div>
+                  <div className="text-[#ff9e2c] font-semibold uppercase mt-1">
+                    {inspectedRoom.housekeepingStatus}
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10">
+                  <div className="text-white/45">Supervisor Check</div>
+                  <div className="text-[#00e676] font-semibold uppercase mt-1">
+                    {inspectedRoom.inspectionStatus}
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10">
+                  <div className="text-white/45">Engineering</div>
+                  <div className="text-[#00f0ff] font-semibold uppercase mt-1">
+                    {inspectedRoom.maintenanceStatus}
+                  </div>
+                </div>
+              </div>
 
-                  {/* Supervisor Verification Button */}
-                  {(role === 'executive' || role === 'front_desk') && (
-                    <div className="pt-2 border-t border-[#1c1c24] flex gap-2">
-                      <button
-                        onClick={() => {
-                          const r = updateMaintenanceTicketStatus(tkt.id, 'checked_ok', role);
-                          setMaintNotice(r.message);
-                        }}
-                        className="flex-1 py-2 bg-[#00e676] text-[#030305] font-bold uppercase"
-                      >
-                        Supervisor: Checked — OK (Close & Release Room)
-                      </button>
+              {/* Guest Folio Details */}
+              {inspectedRoom.occupancyStatus === 'occupied' && (
+                <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2 text-xs">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-[#00f0ff]">
+                    Active Resident Folio
+                  </div>
+                  <div className="text-base font-medium text-white">
+                    {inspectedRoom.currentGuestName}
+                  </div>
+                  {canSeePrivateGuestDetails && (
+                    <div className="text-white/60 space-y-1 font-mono text-[11px]">
+                      <div>Passport / ID: {inspectedRoom.currentGuestIdNumber}</div>
+                      <div>Phone: {inspectedRoom.currentGuestContact}</div>
+                      <div>Vehicle: {inspectedRoom.currentGuestCarNumber || 'None'}</div>
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              )}
 
-        {/* MODULE 7: STAYS & ROOM SERVICE */}
-        {activeModule === 'stays' && (
-          <div className="space-y-6 font-mono text-xs">
-            <h3 className="font-serif text-2xl text-[#f4f0ea] font-sans">
-              Active Culinary Orders & Guest Stays
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {roomServiceOrders.map((ord) => (
-                <div key={ord.id} className="p-4 bg-[#0a0a0e] border border-[#d4af37]/40 space-y-2">
-                  <div className="flex justify-between font-bold">
-                    <span className="text-[#d4af37]">RM {ord.roomNumber}</span>
-                    <span className="text-[#00f0ff] uppercase">{ord.status}</span>
-                  </div>
-                  <div className="text-[#f4f0ea]">{ord.guestName}</div>
-                  <div className="text-[#00e676] font-bold">
-                    {ord.totalIqd.toLocaleString()} IQD (${ord.totalUsd})
-                  </div>
-                  <button
-                    onClick={() => advanceRoomServiceStatus(ord.id)}
-                    className="w-full py-2 bg-[#14141e] hover:bg-[#d4af37] hover:text-[#030305] border border-[#d4af37] text-[#d4af37] font-bold uppercase"
-                  >
-                    Advance Order Stage →
-                  </button>
+              {/* Climate Setpoint */}
+              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-2 text-white/70">
+                    <Thermometer className="w-4 h-4 text-[#00f0ff]" />
+                    HVAC Climate Control
+                  </span>
+                  <span className="font-mono text-sm font-semibold text-[#00f0ff] tabular-nums">
+                    {inspectedRoom.hvacTempC.toFixed(1)} °C
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+                <input
+                  type="range"
+                  min={18}
+                  max={26}
+                  step={0.5}
+                  value={inspectedRoom.hvacTempC}
+                  onChange={(e) =>
+                    setRoomHvacTemp(inspectedRoom.roomNumber, Number(e.target.value))
+                  }
+                  className="w-full accent-[#00f0ff]"
+                />
+              </div>
 
-        {/* MODULE 8: DAILY REPORT */}
-        {activeModule === 'reports' && (
-          <div className="p-6 bg-[#0a0a0e] border border-[#1c1c24] space-y-5 font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-[#181820] pb-4">
-              <div>
-                <div className="text-[10px] text-[#d4af37]">OFFICIAL ERBIL HOTEL DAILY REPORT</div>
-                <h3 className="font-serif text-2xl text-[#f4f0ea] font-sans">
-                  Daily Operational & Treasury Audit — {new Date().toLocaleDateString()}
-                </h3>
-              </div>
-              <div className="text-right">
-                <div className="text-[#00e676] font-bold">
-                  Total Revenue: {telemetry.dualCurrencyRevenue.totalIqd.toLocaleString()} IQD
-                </div>
-                <div className="text-[#888895]">
-                  ≈ ${telemetry.dualCurrencyRevenue.totalUsd.toLocaleString()} USD
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3 bg-[#050508] border border-[#1c1c24]">
-                Ready Rooms: <strong className="text-[#00e676]">{telemetry.readyRooms}</strong>
-              </div>
-              <div className="p-3 bg-[#050508] border border-[#1c1c24]">
-                Occupied: <strong className="text-[#00f0ff]">{telemetry.occupiedRooms}</strong>
-              </div>
-              <div className="p-3 bg-[#050508] border border-[#1c1c24]">
-                Dirty / Cleaning: <strong className="text-[#ff8a3d]">{telemetry.dirtyRooms}</strong>
-              </div>
-              <div className="p-3 bg-[#050508] border border-[#1c1c24]">
-                Out of Service:{' '}
-                <strong className="text-[#ff1e7a]">{telemetry.outOfServiceRooms}</strong>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-bold text-[#d4af37] mb-2 uppercase">
-                In-House Guests & Extra Companions
-              </h4>
-              <div className="space-y-2">
-                {occupiedRooms.map((r) => (
-                  <div
-                    key={r.roomNumber}
-                    className="p-3 bg-[#050508] border border-[#181820] flex flex-wrap justify-between gap-2"
-                  >
-                    <div>
-                      <span className="font-bold text-[#00f0ff]">RM {r.roomNumber}:</span>{' '}
-                      <span className="text-[#f4f0ea]">{r.currentGuestName}</span>
-                      {canSeePrivateGuestDetails && r.extraGuests.length > 0 && (
-                        <span className="text-[#d4af37] ml-2">
-                          + Extra:{' '}
-                          {r.extraGuests.map((eg) => `${eg.fullName} (${eg.idNumber})`).join(', ')}
-                        </span>
-                      )}
-                    </div>
-                    {canSeePrivateGuestDetails && (
-                      <div className="text-[#888895]">
-                        ID: {r.currentGuestIdNumber} | Tel: {r.currentGuestContact} | Car:{' '}
-                        {r.currentGuestCarNumber}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODULE 9: SETTINGS, BACKUP, RESTORE, START FRESH */}
-        {activeModule === 'settings' && (
-          <div className="space-y-6 font-mono text-xs">
-            <div className="p-6 bg-[#0a0a0e] border border-[#1c1c24] space-y-4">
-              <h3 className="font-serif text-2xl text-[#f4f0ea] font-sans">
-                Hotel Details, Standard Tariff & Data Backup
-              </h3>
-              <p className="text-[#888895]">
-                Erbil Hotel — Salem Street, Sulaymaniyah, next to City Star (35.5581216,
-                45.4269216). Ground = Lobby, Floor 1–6 = Operational Citadel Suites & Rooms.
-              </p>
-
-              <div className="flex flex-wrap items-end gap-4 pt-2">
+              {/* Room Tier Selector (Executive) */}
+              {role === 'executive' && (
                 <div>
-                  <label className="block text-[10px] text-[#888895] uppercase mb-1">
-                    Owner Standard Room Price (IQD)
+                  <label className="block text-xs text-white/50 mb-1.5">
+                    Reconfigure Suite Tier
                   </label>
-                  <input
-                    type="number"
-                    value={ownerBasePriceIqd}
-                    onChange={(e) => setOwnerBasePriceIqd(Number(e.target.value) || 100000)}
-                    className="bg-[#050508] border border-[#d4af37] px-3 py-2 text-sm text-[#d4af37] font-bold"
-                  />
-                </div>
-                <button
-                  onClick={handleDownloadBackup}
-                  className="px-4 py-2.5 bg-[#00e676] text-[#030305] font-bold uppercase flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" /> Download Backup (.json)
-                </button>
-                <label className="px-4 py-2.5 bg-[#00f0ff] text-[#030305] font-bold uppercase flex items-center gap-2 cursor-pointer">
-                  <Upload className="w-4 h-4" /> Restore from Backup
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleUploadBackup}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
-              {settingsMsg && (
-                <div className="p-3 bg-[#00e676]/10 border border-[#00e676] text-[#00e676]">
-                  {settingsMsg}
+                  <select
+                    value={inspectedRoom.roomType}
+                    onChange={(e) =>
+                      setRoomType(inspectedRoom.roomNumber, e.target.value as RoomType)
+                    }
+                    className="w-full rounded-xl bg-white/[0.05] border border-white/15 px-3.5 py-2.5 text-xs text-white"
+                  >
+                    <option value="Single" className="bg-[#08080c]">Single</option>
+                    <option value="Twin" className="bg-[#08080c]">Twin</option>
+                    <option value="Executive Suite" className="bg-[#08080c]">Executive Suite</option>
+                    <option value="Diplomatic Suite" className="bg-[#08080c]">Diplomatic Suite</option>
+                    <option value="Royal Penthouse" className="bg-[#08080c]">Royal Penthouse</option>
+                  </select>
                 </div>
               )}
             </div>
 
-            {/* Start Fresh — Owner 2-Step Confirmation + Typing "Erbil Hotel" */}
-            <div className="p-6 bg-[#0a0a0e] border border-[#ff1e7a]/50 space-y-4">
-              <div className="text-[#ff1e7a] font-bold uppercase">
-                Start Fresh — Reset Hotel Operational State
-              </div>
-              {resetConfirmStep === 0 && (
+            {/* 1-Click Status Transitions */}
+            <div className="space-y-2.5 pt-4 border-t border-white/10">
+              {inspectedRoom.occupancyStatus === 'occupied' && (
                 <button
-                  onClick={() => setResetConfirmStep(1)}
-                  className="px-4 py-2 bg-[#ff1e7a]/20 border border-[#ff1e7a] text-[#ff1e7a] font-bold uppercase"
+                  onClick={() => checkOutRoom(inspectedRoom.roomNumber)}
+                  className="w-full py-3 rounded-2xl bg-[#ff9e2c] text-[#030305] text-xs font-semibold uppercase tracking-wider"
                 >
-                  Start fresh — erase and reset hotel data
+                  Check Out Resident → Flag Turnover
                 </button>
               )}
-              {resetConfirmStep === 1 && (
-                <div className="space-y-3">
-                  <p className="text-[#ff8a3d]">
-                    Confirmation 1 of 2: This resets rooms, stays, tickets, and tasks to factory
-                    seed state. Are you sure?
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setResetConfirmStep(2)}
-                      className="px-4 py-2 bg-[#ff1e7a] text-white font-bold uppercase"
-                    >
-                      Yes, proceed to final confirmation
-                    </button>
-                    <button
-                      onClick={() => setResetConfirmStep(0)}
-                      className="px-4 py-2 bg-[#16161e] text-[#888895]"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
+              {inspectedRoom.housekeepingStatus !== 'clean' && (
+                <button
+                  onClick={() =>
+                    markCleaningFinishedAwaitingInspection(inspectedRoom.roomNumber)
+                  }
+                  className="w-full py-3 rounded-2xl bg-[#00f0ff] text-[#030305] text-xs font-semibold uppercase tracking-wider"
+                >
+                  Complete Cleaning → Queue Inspection
+                </button>
               )}
-              {resetConfirmStep === 2 && (
-                <div className="space-y-3">
-                  <p className="text-[#ff1e7a]">
-                    Confirmation 2 of 2: Type <strong>Erbil Hotel</strong> below to confirm reset:
-                  </p>
-                  <input
-                    type="text"
-                    value={resetTypedPhrase}
-                    onChange={(e) => setResetTypedPhrase(e.target.value)}
-                    placeholder="Type: Erbil Hotel"
-                    className="bg-[#050508] border border-[#ff1e7a] px-3 py-2 text-[#f4f0ea]"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      disabled={resetTypedPhrase !== 'Erbil Hotel'}
-                      onClick={() => {
-                        resetAllHotelData();
-                        setResetConfirmStep(0);
-                        setResetTypedPhrase('');
-                        setSettingsMsg('Hotel data reset to clean seed state.');
-                      }}
-                      className="px-4 py-2 bg-[#ff1e7a] disabled:opacity-40 text-white font-bold uppercase"
-                    >
-                      Confirm Erase & Reset
-                    </button>
-                    <button
-                      onClick={() => setResetConfirmStep(0)}
-                      className="px-4 py-2 bg-[#16161e] text-[#888895]"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
+              {inspectedRoom.inspectionStatus !== 'passed' && (
+                <button
+                  onClick={() => inspectRoomVerdict(inspectedRoom.roomNumber, 'passed')}
+                  className="w-full py-3 rounded-2xl bg-[#00e676] text-[#030305] text-xs font-semibold uppercase tracking-wider"
+                >
+                  Supervisor Pass → Certify Ready
+                </button>
               )}
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 };

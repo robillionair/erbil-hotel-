@@ -6,17 +6,17 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 
 /**
- * Custom GLSL Post-Processing Shader combining:
- * 1. Radial Chromatic Aberration (0.0012 offset scaled by radial distance)
- * 2. Simplex/Hash Film Grain (0.035 opacity)
- * 3. Subtle optical vignette & exposure stabilization
+ * Custom HDR Optics Shader combining:
+ * 1. Radial Chromatic Aberration (0.0014 lens dispersion at screen edges)
+ * 2. Anamorphic Vignette & Tone Mapping
+ * 3. Animated Simplex Film Grain (0.032 opacity)
  */
 const CitadelOpticsShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTime: { value: 0.0 },
-    uChromaticOffset: { value: 0.0012 },
-    uFilmGrainOpacity: { value: 0.035 },
+    uChromaticOffset: { value: 0.0014 },
+    uFilmGrainOpacity: { value: 0.032 },
     uPulseIntensity: { value: 0.15 },
     uResolution: { value: new THREE.Vector2(1920, 1080) },
   },
@@ -36,19 +36,20 @@ const CitadelOpticsShader = {
     uniform vec2 uResolution;
     varying vec2 vUv;
 
-    // High-frequency 2D Simplex-inspired hash noise
     float simplexGrain(vec2 co, float timeSeed) {
-      vec2 p = co * uResolution * 0.5 + vec2(timeSeed * 71.3, timeSeed * 113.7);
+      vec2 p = co * uResolution * 0.5 + vec2(timeSeed * 83.1, timeSeed * 127.9);
       return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453123) * 2.0 - 1.0;
     }
 
     void main() {
       vec2 centerDelta = vUv - vec2(0.5);
-      float distFromCenter = length(centerDelta);
+      // Anamorphic aspect weighting
+      vec2 anamorphicDelta = centerDelta * vec2(1.15, 0.92);
+      float distFromCenter = length(anamorphicDelta);
 
-      // Radial Chromatic Aberration (0.0012 baseline + dynamic telemetry pulse boost)
-      float aberrationAmount = (uChromaticOffset + uPulseIntensity * 0.0014) * (0.4 + distFromCenter * 1.65);
-      vec2 radialDir = normalize(centerDelta + vec2(0.0001)) * aberrationAmount;
+      // Radial Chromatic Aberration (0.0014 baseline + dynamic telemetry pulse boost)
+      float aberrationAmount = (uChromaticOffset + uPulseIntensity * 0.0016) * pow(distFromCenter * 1.45, 1.35);
+      vec2 radialDir = normalize(centerDelta + vec2(0.00001)) * aberrationAmount;
 
       float rChannel = texture2D(tDiffuse, vUv + radialDir).r;
       vec4 baseSample = texture2D(tDiffuse, vUv);
@@ -57,13 +58,13 @@ const CitadelOpticsShader = {
 
       vec3 color = vec3(rChannel, gChannel, bChannel);
 
-      // Sub-pixel Simplex Film Grain (0.035 opacity)
-      float grain = simplexGrain(vUv, fract(uTime * 0.37));
+      // Animated Simplex Film Grain (0.032 opacity)
+      float grain = simplexGrain(vUv, fract(uTime * 0.43));
       color += vec3(grain * uFilmGrainOpacity);
 
-      // Subtle architectural obsidian vignette
-      float vignette = smoothstep(1.12, 0.28, distFromCenter);
-      color *= mix(0.76, 1.04, vignette);
+      // Silky Anamorphic Vignette
+      float vignette = smoothstep(1.08, 0.22, distFromCenter);
+      color *= mix(0.68, 1.06, vignette);
 
       gl_FragColor = vec4(max(color, vec3(0.0)), baseSample.a);
     }
@@ -88,7 +89,7 @@ export function createCitadelPostProcessor(
 ): CitadelComposerBundle {
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 
-  // MSAA 4x WebGLRenderTarget for hardware anti-aliasing
+  // MSAA 4x HalfFloat HDR RenderTarget
   const renderTarget = new THREE.WebGLRenderTarget(width * pixelRatio, height * pixelRatio, {
     samples: 4,
     type: THREE.HalfFloatType,
@@ -103,16 +104,16 @@ export function createCitadelPostProcessor(
   const renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
 
-  // Pass 2: Mipmap UnrealBloomPass
+  // Pass 2: Mipmap UnrealBloomPass (strength: 1.35, radius: 0.65, threshold: 0.12)
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(width, height),
-    0.95, // strength
-    0.55, // radius
-    0.18  // threshold
+    1.35,
+    0.65,
+    0.12
   );
   composer.addPass(bloomPass);
 
-  // Pass 3: Custom Radial Chromatic Aberration (0.0012) + Simplex Film Grain (0.035)
+  // Pass 3: Custom Radial Chromatic Aberration (0.0014) + Anamorphic Vignette + Simplex Film Grain (0.032)
   const opticsPass = new ShaderPass(CitadelOpticsShader);
   opticsPass.uniforms.uResolution.value.set(width * pixelRatio, height * pixelRatio);
   composer.addPass(opticsPass);
@@ -128,7 +129,7 @@ export function createCitadelPostProcessor(
     update: (elapsedTime: number, pulseIntensity: number) => {
       opticsPass.uniforms.uTime.value = elapsedTime;
       opticsPass.uniforms.uPulseIntensity.value = pulseIntensity;
-      bloomPass.strength = 0.88 + pulseIntensity * 0.45;
+      bloomPass.strength = 1.35 + pulseIntensity * 0.55;
       composer.render();
     },
     setSize: (w: number, h: number) => {
@@ -145,10 +146,6 @@ export function createCitadelPostProcessor(
   };
 }
 
-/**
- * Cold Unmount Utility: Completely disposes Three.js scene geometries/materials,
- * post-processing framebuffers, and WebGL context (`forceContextLoss()`).
- */
 export function disposeThreeContextComplete(
   scene: THREE.Scene,
   renderer: THREE.WebGLRenderer,

@@ -26,8 +26,8 @@ export const View6TreasuryLab: React.FC = () => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#030305');
 
-    const camera = new THREE.PerspectiveCamera(46, width / height, 0.5, 220);
-    camera.position.set(0, 22, 34);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.5, 220);
+    camera.position.set(0, 20, 35);
     camera.lookAt(0, 2, 0);
 
     const renderer = new THREE.WebGLRenderer({
@@ -40,45 +40,69 @@ export const View6TreasuryLab: React.FC = () => {
     container.appendChild(renderer.domElement);
 
     const postProcessor = createCitadelPostProcessor(renderer, scene, camera, width, height);
-    postProcessor.bloomPass.strength = 1.1;
 
     const treasuryGroup = new THREE.Group();
     scene.add(treasuryGroup);
 
     // -------------------------------------------------------------------------
-    // 1. CONCENTRIC ROTATING POLAR DATA RINGS
+    // 1. 3D CONCENTRIC TILTED GYROSCOPE RINGS + PRECISION RADIAL TICK MARKS
     // -------------------------------------------------------------------------
-    const ringRadii = [5.0, 8.2, 11.4, 14.6, 17.8, 21.0];
-    const ringColors = ['#00e676', '#00f0ff', '#d4af37', '#ff8a3d', '#ff1e7a', '#d4af37'];
-    const ringMeshes: THREE.LineLoop[] = [];
+    const ringRadii = [5.2, 8.4, 11.6, 14.8, 18.0, 21.2];
+    const ringColors = ['#00e676', '#00f0ff', '#d4af37', '#ff9e2c', '#ff1e7a', '#d4af37'];
+    const gyroRings: THREE.Group[] = [];
 
     ringRadii.forEach((rad, idx) => {
-      const segments = 128;
+      const ringHolder = new THREE.Group();
+      ringHolder.rotation.x = (idx % 2 === 0 ? 1 : -1) * 0.14;
+      ringHolder.rotation.z = (idx % 3 - 1) * 0.1;
+
+      // Primary Ring Loop
+      const segments = 160;
       const pts: THREE.Vector3[] = [];
       for (let s = 0; s < segments; s++) {
         const theta = (s / segments) * Math.PI * 2;
-        const notch = s % 8 === 0 ? 0.45 : 0.0;
-        pts.push(
-          new THREE.Vector3(
-            Math.cos(theta) * (rad + notch),
-            (idx - 2.5) * 0.35,
-            Math.sin(theta) * (rad + notch)
-          )
-        );
+        pts.push(new THREE.Vector3(Math.cos(theta) * rad, 0, Math.sin(theta) * rad));
       }
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       const mat = new THREE.LineBasicMaterial({
         color: new THREE.Color(ringColors[idx]),
         transparent: true,
-        opacity: 0.48,
+        opacity: 0.45,
+        blending: THREE.AdditiveBlending,
       });
-      const loop = new THREE.LineLoop(geo, mat);
-      treasuryGroup.add(loop);
-      ringMeshes.push(loop);
+      ringHolder.add(new THREE.LineLoop(geo, mat));
+
+      // Precision Radial Tick Marks
+      const tickPts: number[] = [];
+      const tickCount = 36 + idx * 12;
+      for (let t = 0; t < tickCount; t++) {
+        const theta = (t / tickCount) * Math.PI * 2;
+        const innerR = rad - (t % 3 === 0 ? 0.65 : 0.3);
+        const outerR = rad + (t % 3 === 0 ? 0.65 : 0.3);
+        tickPts.push(
+          Math.cos(theta) * innerR,
+          0,
+          Math.sin(theta) * innerR,
+          Math.cos(theta) * outerR,
+          0,
+          Math.sin(theta) * outerR
+        );
+      }
+      const tickGeo = new THREE.BufferGeometry();
+      tickGeo.setAttribute('position', new THREE.Float32BufferAttribute(tickPts, 3));
+      const tickMat = new THREE.LineBasicMaterial({
+        color: new THREE.Color(ringColors[idx]),
+        transparent: true,
+        opacity: 0.35,
+      });
+      ringHolder.add(new THREE.LineSegments(tickGeo, tickMat));
+
+      treasuryGroup.add(ringHolder);
+      gyroRings.push(ringHolder);
     });
 
     // -------------------------------------------------------------------------
-    // 2. 35,000-PARTICLE THERMAL ATTRACTOR PLUME (YIELD vs FLOOR DEPTH)
+    // 2. 35,000-PARTICLE THERMAL CURL-NOISE ATTRACTOR PLUME
     // -------------------------------------------------------------------------
     const plumeSeeds = new Float32Array(PLUME_PARTICLE_COUNT * 3); // [angle, heightProgress, radialSpread]
     const plumeColors = new Float32Array(PLUME_PARTICLE_COUNT * 3);
@@ -87,14 +111,14 @@ export const View6TreasuryLab: React.FC = () => {
       new THREE.Color('#00f0ff'), // Base Occupancy Cyan
       new THREE.Color('#00e676'), // Nominal Yield Emerald
       new THREE.Color('#d4af37'), // Brushed Citadel Gold
-      new THREE.Color('#ff8a3d'), // High ADR Thermal Amber
+      new THREE.Color('#ff9e2c'), // High ADR Thermal Amber
       new THREE.Color('#ff1e7a'), // Sovereign Penthouse Magenta Core
     ];
 
     for (let i = 0; i < PLUME_PARTICLE_COUNT; i++) {
       const theta = Math.random() * Math.PI * 2;
-      const hProg = Math.random(); // 0 (floor 1 base) -> 1 (floor 6 penthouse crown)
-      const spread = 0.25 + Math.pow(Math.random(), 0.9) * 1.15;
+      const hProg = Math.random();
+      const spread = 0.22 + Math.pow(Math.random(), 0.9) * 1.18;
 
       plumeSeeds[i * 3 + 0] = theta;
       plumeSeeds[i * 3 + 1] = hProg;
@@ -136,24 +160,22 @@ export const View6TreasuryLab: React.FC = () => {
           float h0 = position.y;
           float spread = position.z;
 
-          // Continuous upward thermal convection loop
-          float h = fract(h0 + uTime * (0.14 + uOccupancyRatio * 0.18 + uPulse * 0.25));
-          float spin = theta0 + uTime * (0.65 + (1.0 - h) * 1.45) + h * 6.28318;
+          float h = fract(h0 + uTime * (0.14 + uOccupancyRatio * 0.2 + uPulse * 0.28));
+          float spin = theta0 + uTime * (0.7 + (1.0 - h) * 1.55) + h * 6.28318;
 
-          // Thermal attractor funnel shape: wide at base rings, pinched at mid-height, flaring at crown
-          float funnelProfile = mix(13.5, 2.2, sin(h * 3.14159) * 0.82) * spread;
-          float r = funnelProfile * (0.65 + uOccupancyRatio * 0.55);
+          float funnelProfile = mix(14.0, 2.0, sin(h * 3.14159) * 0.85) * spread;
+          float r = funnelProfile * (0.62 + uOccupancyRatio * 0.58);
 
           vec3 pos;
-          pos.x = cos(spin) * r + sin(uTime * 2.1 + h * 12.0) * (0.45 + uPulse * 0.8);
-          pos.z = sin(spin) * r + cos(uTime * 1.9 + h * 12.0) * (0.45 + uPulse * 0.8);
-          pos.y = -8.5 + h * 21.0;
+          pos.x = cos(spin) * r + sin(uTime * 2.2 + h * 12.0) * (0.48 + uPulse * 0.9);
+          pos.z = sin(spin) * r + cos(uTime * 2.0 + h * 12.0) * (0.48 + uPulse * 0.9);
+          pos.y = -9.0 + h * 22.0;
 
-          vHeat = smoothstep(0.1, 0.9, h) * (0.7 + uPulse * 0.5);
-          vColor = mix(aColor, vec3(1.0, 0.96, 0.85), pow(1.0 - spread * 0.5, 2.0) * 0.65);
+          vHeat = smoothstep(0.08, 0.92, h) * (0.72 + uPulse * 0.55);
+          vColor = mix(aColor, vec3(1.0, 0.97, 0.88), pow(1.0 - spread * 0.5, 2.0) * 0.7);
 
           vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-          gl_PointSize = (1.5 + vHeat * 1.4) * uPixelRatio * (28.0 / max(8.0, -mvPosition.z));
+          gl_PointSize = (1.55 + vHeat * 1.5) * uPixelRatio * (30.0 / max(8.0, -mvPosition.z));
           gl_Position = projectionMatrix * mvPosition;
         }
       `,
@@ -167,7 +189,7 @@ export const View6TreasuryLab: React.FC = () => {
           if (r2 > 1.0) discard;
 
           float glow = exp(-r2 * 3.4);
-          gl_FragColor = vec4(vColor, glow * (0.42 + vHeat * 0.45));
+          gl_FragColor = vec4(vColor * 1.25, glow * (0.45 + vHeat * 0.48));
         }
       `,
       transparent: true,
@@ -177,6 +199,36 @@ export const View6TreasuryLab: React.FC = () => {
 
     const plumePoints = new THREE.Points(plumeGeo, plumeShaderMat);
     treasuryGroup.add(plumePoints);
+
+    // Camera Orbit
+    let isDragging = false;
+    let prevX = 0;
+    let prevY = 0;
+    let yaw = 0.0;
+    let pitch = 0.52;
+
+    const onDown = (e: PointerEvent) => {
+      isDragging = true;
+      prevX = e.clientX;
+      prevY = e.clientY;
+      recordInteraction();
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!isDragging) return;
+      yaw -= (e.clientX - prevX) * 0.006;
+      pitch = Math.max(0.1, Math.min(1.25, pitch + (e.clientY - prevY) * 0.005));
+      prevX = e.clientX;
+      prevY = e.clientY;
+      recordInteraction();
+    };
+    const onUp = () => {
+      isDragging = false;
+    };
+
+    const domElem = renderer.domElement;
+    domElem.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
 
     let rafId = 0;
     let lastFrameTime = performance.now();
@@ -209,9 +261,22 @@ export const View6TreasuryLab: React.FC = () => {
       const snap = computeTelemetrySnapshot();
       const elapsedSec = (now - startTime) * 0.001;
 
-      ringMeshes.forEach((loop, idx) => {
+      if (!isDragging) {
+        yaw += dt * 0.1;
+      }
+
+      const dist = 36;
+      camera.position.set(
+        Math.sin(yaw) * Math.cos(pitch) * dist,
+        Math.sin(pitch) * dist,
+        Math.cos(yaw) * Math.cos(pitch) * dist
+      );
+      camera.lookAt(0, 1.5, 0);
+
+      gyroRings.forEach((grp, idx) => {
         const dir = idx % 2 === 0 ? 1 : -1;
-        loop.rotation.y = elapsedSec * dir * (0.18 + idx * 0.04);
+        grp.rotation.y = elapsedSec * dir * (0.2 + idx * 0.045);
+        grp.rotation.x = Math.sin(elapsedSec * 0.4 + idx) * 0.16;
       });
 
       plumeShaderMat.uniforms.uTime.value = elapsedSec;
@@ -236,87 +301,88 @@ export const View6TreasuryLab: React.FC = () => {
 
     return () => {
       cancelAnimationFrame(rafId);
+      domElem.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
       window.removeEventListener('resize', handleResize);
       disposeThreeContextComplete(scene, renderer, postProcessor);
     };
-  }, []);
+  }, [recordInteraction]);
 
   const injectHighYieldCulinarySettlement = () => {
     recordInteraction();
-    triggerShaderPulse(1.35);
+    triggerShaderPulse(1.4);
     placeRoomServiceOrder({
       roomNumber: '601',
-      guestName: 'Sheikh Farhad Al-Sabah // Penthouse Banquet',
+      guestName: 'Sheikh Farhad Al-Sabah // Sovereign Banquet',
       items: [
-        { name: 'Sovereign Lamb Quzi Banquet Platter', priceIqd: 145000, qty: 1 },
+        { name: 'Royal Mesopotamian Lamb Quzi Banquet', priceIqd: 145000, qty: 1 },
         { name: 'Vintage Saffron & Cardamom Ritual', priceIqd: 55000, qty: 1 },
       ],
     });
   };
 
   return (
-    <div
-      onMouseMove={recordInteraction}
-      className="relative w-full h-full bg-[#030305] overflow-hidden select-none"
-    >
-      <div ref={containerRef} className="w-full h-full" />
+    <div className="relative w-full h-full bg-[#030305] overflow-hidden select-none">
+      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Top HUD Telemetry */}
-      <div className="absolute top-3 left-3 pointer-events-none font-mono space-y-1">
-        <div className="text-[9px] tracking-[0.18em] text-[#686875] uppercase">
-          VIEW 06 // TREASURY & YIELD LAB: RADIAL REVPAR MATRIX (POLAR RINGS + 35,000 THERMAL ATTRACTOR PLUME)
+      {/* Top-Left Telemetry Overlay */}
+      <div className="absolute top-20 left-6 pointer-events-none hud-glass rounded-2xl px-4 py-3 space-y-1">
+        <div className="font-mono text-[10px] tracking-[0.2em] text-[#d4af37] uppercase">
+          VIEW 06 // YIELD & TREASURY LAB • 3D POLAR GYROSCOPE & 35,000 THERMAL PLUME
         </div>
-        <div className="flex flex-wrap items-center gap-4 text-[11px] tabular-nums">
-          <span className="text-[#d4af37] font-bold">
-            TOTAL IQD: {telemetry.dualCurrencyRevenue.totalIqd.toLocaleString()} IQD
+        <div className="flex flex-wrap items-center gap-4 font-mono text-xs tabular-nums">
+          <span className="text-[#d4af37] font-semibold">
+            IQD: {telemetry.dualCurrencyRevenue.totalIqd.toLocaleString()} IQD
           </span>
-          <span className="text-[#00e676] font-bold">
-            TOTAL USD: ${telemetry.dualCurrencyRevenue.totalUsd.toLocaleString()} USD
+          <span className="text-[#00e676] font-semibold">
+            USD: ${telemetry.dualCurrencyRevenue.totalUsd.toLocaleString()} USD
           </span>
           <span className="text-[#00f0ff]">
-            EXCHANGE: 1 USD = {telemetry.dualCurrencyRevenue.exchangeRate.toLocaleString()} IQD
+            FX: 1 USD = {telemetry.dualCurrencyRevenue.exchangeRate.toLocaleString()} IQD
           </span>
         </div>
       </div>
 
-      {/* Right Radial Ring Legend & Live Dual-Currency Ledger */}
-      <div className="absolute top-12 right-3 w-72 bg-[#040406]/90 border border-[#16161a] p-3 font-mono text-[10px] space-y-2 tabular-nums">
-        <div className="text-[9px] text-[#d4af37] tracking-[0.16em] uppercase border-b border-[#16161a] pb-1">
-          POLAR RING TELEMETRY MAPPING
+      {/* Floating Glassmorphic Treasury Ledger Card */}
+      <div className="absolute top-20 right-6 w-76 hud-glass rounded-3xl p-5 font-mono text-xs space-y-3 tabular-nums">
+        <div className="text-[10px] text-[#d4af37] tracking-[0.18em] uppercase border-b border-white/10 pb-2">
+          3D Polar Gyroscope Matrix
         </div>
         <div className="flex justify-between">
-          <span className="text-[#00e676]">RING 01 // OCCUPANCY %:</span>
-          <span className="text-[#f4f0ea] font-bold">{telemetry.occupancyPercent}%</span>
+          <span className="text-[#00e676]">RING 01 • OCCUPANCY:</span>
+          <span className="text-white font-semibold">{telemetry.occupancyPercent}%</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-[#00f0ff]">RING 02 // LIVE ADR:</span>
-          <span className="text-[#f4f0ea] font-bold">
+          <span className="text-[#00f0ff]">RING 02 • LIVE ADR:</span>
+          <span className="text-white font-semibold">
             {telemetry.adrIqd.toLocaleString()} IQD (${telemetry.adrUsd})
           </span>
         </div>
         <div className="flex justify-between">
-          <span className="text-[#d4af37]">RING 03 // LIVE REVPAR:</span>
-          <span className="text-[#f4f0ea] font-bold">
+          <span className="text-[#d4af37]">RING 03 • LIVE REVPAR:</span>
+          <span className="text-white font-semibold">
             {telemetry.revParIqd.toLocaleString()} IQD (${telemetry.revParUsd})
           </span>
         </div>
         <div className="flex justify-between">
-          <span className="text-[#ff8a3d]">RING 04 // ROOM FOLIOS:</span>
-          <span className="text-[#f4f0ea]">
+          <span className="text-[#ff9e2c]">RING 04 • SUITE FOLIOS:</span>
+          <span className="text-white/90">
             {telemetry.dualCurrencyRevenue.roomRevenueIqd.toLocaleString()} IQD
           </span>
         </div>
         <div className="flex justify-between">
-          <span className="text-[#ff1e7a]">RING 05 // CULINARY F&B:</span>
-          <span className="text-[#f4f0ea]">
+          <span className="text-[#ff1e7a]">RING 05 • DINING F&B:</span>
+          <span className="text-white/90">
             {telemetry.dualCurrencyRevenue.culinaryRevenueIqd.toLocaleString()} IQD
           </span>
         </div>
+
         <button
           onClick={injectHighYieldCulinarySettlement}
-          className="mt-2 w-full py-2 bg-[#141006] hover:bg-[#d4af37] text-[#d4af37] hover:text-[#030305] border border-[#d4af37] font-bold uppercase tracking-wider transition"
+          className="w-full py-2.5 rounded-2xl bg-[#d4af37]/15 hover:bg-[#d4af37] text-[#d4af37] hover:text-[#030305] border border-[#d4af37]/50 font-semibold uppercase text-[10px] tracking-wider transition"
         >
-          + SETTLE VIP PENTHOUSE BANQUET (+200,000 IQD)
+          + Settle Penthouse Banquet (+200,000 IQD)
         </button>
       </div>
     </div>

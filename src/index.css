@@ -5,7 +5,6 @@
 @layer base {
   * {
     box-sizing: border-box;
-    border-radius: 0px;
   }
 
   html,
@@ -13,9 +12,12 @@
     margin: 0;
     padding: 0;
     background-color: #030305;
+    background-image: radial-gradient(ellipse at 50% 0%, rgba(28, 24, 38, 0.65) 0%, #030305 75%);
     color: #f4f0ea;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
@@ -23,20 +25,80 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Custom subtle dark scrollbar */
+/* Specular VisionOS / Linear Glassmorphism Surfaces */
+.glass-panel {
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.012) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.glass-pill {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.hud-glass {
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  background: rgba(4, 4, 8, 0.68);
+  border: 0.5px solid rgba(255, 255, 255, 0.11);
+  border-top: 0.5px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+}
+
+/* Smooth Ken Burns Parallax Animation */
+@keyframes kenBurnsSlow {
+  0% {
+    transform: scale(1.03) translate3d(0px, 0px, 0px);
+  }
+  50% {
+    transform: scale(1.1) translate3d(-1.5%, -1%, 0px);
+  }
+  100% {
+    transform: scale(1.03) translate3d(0px, 0px, 0px);
+  }
+}
+
+.animate-ken-burns {
+  animation: kenBurnsSlow 28s ease-in-out infinite;
+}
+
+@keyframes nfcRipple {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.animate-nfc-ripple {
+  animation: nfcRipple 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+/* Custom sleek dark scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #040406;
+  background: rgba(4, 4, 8, 0.6);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #24242e;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #d4af37;
+  background: rgba(212, 175, 55, 0.6);
 }

@@ -8,32 +8,29 @@ import { useErbilTelemetry, computeTelemetrySnapshot } from '../telemetry/ErbilT
 import { useCitadelStore } from '../../store/useCitadelStore';
 import { useHotelOpsStore, isRoomReady, BookingChannel } from '../../store/useHotelOpsStore';
 
-const CHANNELS: { name: BookingChannel; color: string; yNorm: number }[] = [
-  { name: 'Direct_Web', color: '#d4af37', yNorm: 0.16 },
-  { name: 'Booking_OTA', color: '#ff8a3d', yNorm: 0.33 },
-  { name: 'Embassy_Corp', color: '#00f0ff', yNorm: 0.5 },
-  { name: 'Walk_In_VIP', color: '#00e676', yNorm: 0.67 },
-  { name: 'Airport_Transfer', color: '#ff1e7a', yNorm: 0.84 },
+const CHANNELS: { name: BookingChannel; label: string; color: string; yPos: number }[] = [
+  { name: 'Direct_Web', label: 'DIRECT_WEB_PORTAL', color: '#d4af37', yPos: 10.0 },
+  { name: 'Embassy_Corp', label: 'EMBASSY_DIPLOMATIC', color: '#00f0ff', yPos: 5.0 },
+  { name: 'Booking_OTA', label: 'OTA_GLOBAL_GDS', color: '#ff9e2c', yPos: 0.0 },
+  { name: 'Walk_In_VIP', label: 'VIP_CONCIERGE_DESK', color: '#00e676', yPos: -5.0 },
+  { name: 'Airport_Transfer', label: 'EBL_AIRPORT_CHAUFFEUR', color: '#ff1e7a', yPos: -10.0 },
 ];
 
-interface PhotonPacket {
-  filamentIdx: number;
-  t: number; // 0.0 (left) -> 0.5 (singularity) -> 1.0 (right floor slot)
-  speed: number;
-  color: string;
-  size: number;
-  highEnergy: boolean;
-}
+const FILAMENT_COUNT = 128;
+const PHOTON_COUNT = 15000;
 
 export const View2BookingFunnel: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const shockwaveRef = useRef<number>(0);
   const telemetry = useErbilTelemetry();
   const { recordInteraction, triggerShaderPulse } = useCitadelStore();
   const { rooms, checkInGuest } = useHotelOpsStore();
 
-  const triggerSimulatedBookingPulse = () => {
+  const triggerBookingShockwave = () => {
     recordInteraction();
-    triggerShaderPulse(1.3);
+    triggerShaderPulse(1.45);
+    shockwaveRef.current = 0.01;
+
     const readyRoom = rooms.find(isRoomReady);
     if (readyRoom) {
       const sampleNames = [
@@ -63,17 +60,13 @@ export const View2BookingFunnel: React.FC = () => {
 
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
-    const dpr = Math.min((window.devicePixelRatio || 1) * 2, 3);
 
-    // Offscreen High-DPI 2D Canvas (devicePixelRatio * 2)
-    const offscreenCanvas = document.createElement('canvas');
-    offscreenCanvas.width = Math.floor(width * dpr);
-    offscreenCanvas.height = Math.floor(height * dpr);
-    const ctx = offscreenCanvas.getContext('2d')!;
-
-    // WebGL Scene + Fullscreen Quad routed through CitadelPostProcessor
     const scene = new THREE.Scene();
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    scene.background = new THREE.Color('#030305');
+
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.5, 250);
+    camera.position.set(0, 2, 42);
+    camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: false,
@@ -84,67 +77,203 @@ export const View2BookingFunnel: React.FC = () => {
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
-    const canvasTexture = new THREE.CanvasTexture(offscreenCanvas);
-    canvasTexture.minFilter = THREE.LinearFilter;
-    canvasTexture.magFilter = THREE.LinearFilter;
-
-    const quadGeo = new THREE.PlaneGeometry(2, 2);
-    const quadMat = new THREE.MeshBasicMaterial({ map: canvasTexture });
-    const quadMesh = new THREE.Mesh(quadGeo, quadMat);
-    scene.add(quadMesh);
-
     const postProcessor = createCitadelPostProcessor(renderer, scene, camera, width, height);
-    postProcessor.bloomPass.strength = 0.72;
-    postProcessor.bloomPass.threshold = 0.22;
 
-    // Build 85 inbound-to-outbound filament definitions
-    const filaments = Array.from({ length: 85 }, (_, i) => {
-      const chIndex = i % CHANNELS.length;
-      const floorIndex = i % 6; // Floors L1 - L6
-      const jitterLeft = ((i * 17) % 100) / 100 - 0.5;
-      const jitterRight = ((i * 29) % 100) / 100 - 0.5;
-      return {
-        chIndex,
-        floorIndex,
-        color: CHANNELS[chIndex].color,
-        leftYNorm: CHANNELS[chIndex].yNorm + jitterLeft * 0.11,
-        rightYNorm: 0.14 + floorIndex * 0.142 + jitterRight * 0.06,
-        pinchOffset: ((i - 42) / 42) * 26,
-      };
+    const funnelGroup = new THREE.Group();
+    scene.add(funnelGroup);
+
+    // -------------------------------------------------------------------------
+    // 1. 128 VOLUMETRIC 3D CUBIC BEZIER FILAMENTS
+    // -------------------------------------------------------------------------
+    const filamentDefs: {
+      p0: THREE.Vector3;
+      p1: THREE.Vector3;
+      p2: THREE.Vector3;
+      p3: THREE.Vector3;
+      color: THREE.Color;
+    }[] = [];
+
+    for (let i = 0; i < FILAMENT_COUNT; i++) {
+      const ch = CHANNELS[i % CHANNELS.length];
+      const floorIdx = i % 6;
+      const rightY = 10.5 - floorIdx * 4.2;
+
+      const zLeft = ((i % 16) / 15 - 0.5) * 14.0;
+      const zRight = (((i * 7) % 16) / 15 - 0.5) * 14.0;
+      const yPinch = (((i * 13) % 32) / 31 - 0.5) * 2.8;
+      const zPinch = (((i * 19) % 32) / 31 - 0.5) * 2.8;
+
+      const p0 = new THREE.Vector3(-26, ch.yPos + (Math.random() - 0.5) * 2.2, zLeft);
+      const p1 = new THREE.Vector3(-7, yPinch * 1.4, zPinch * 1.4);
+      const p2 = new THREE.Vector3(7, yPinch * 1.4, zPinch * 1.4);
+      const p3 = new THREE.Vector3(26, rightY + (Math.random() - 0.5) * 1.8, zRight);
+
+      const col = new THREE.Color(ch.color);
+      filamentDefs.push({ p0, p1, p2, p3, color: col });
+
+      const curve = new THREE.CubicBezierCurve3(p0, p1, p2, p3);
+      const pts = curve.getPoints(64);
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const mat = new THREE.LineBasicMaterial({
+        color: col,
+        transparent: true,
+        opacity: 0.24,
+        blending: THREE.AdditiveBlending,
+      });
+      funnelGroup.add(new THREE.Line(geo, mat));
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. 15,000 GPU CUBIC-BEZIER STREAMING PHOTON PARTICLES
+    // -------------------------------------------------------------------------
+    const aP0 = new Float32Array(PHOTON_COUNT * 3);
+    const aP1 = new Float32Array(PHOTON_COUNT * 3);
+    const aP2 = new Float32Array(PHOTON_COUNT * 3);
+    const aP3 = new Float32Array(PHOTON_COUNT * 3);
+    const aColor = new Float32Array(PHOTON_COUNT * 3);
+    const aSeed = new Float32Array(PHOTON_COUNT * 3); // [phaseOffset, speed, size]
+
+    for (let i = 0; i < PHOTON_COUNT; i++) {
+      const f = filamentDefs[i % filamentDefs.length];
+      aP0[i * 3 + 0] = f.p0.x;
+      aP0[i * 3 + 1] = f.p0.y;
+      aP0[i * 3 + 2] = f.p0.z;
+
+      aP1[i * 3 + 0] = f.p1.x;
+      aP1[i * 3 + 1] = f.p1.y;
+      aP1[i * 3 + 2] = f.p1.z;
+
+      aP2[i * 3 + 0] = f.p2.x;
+      aP2[i * 3 + 1] = f.p2.y;
+      aP2[i * 3 + 2] = f.p2.z;
+
+      aP3[i * 3 + 0] = f.p3.x;
+      aP3[i * 3 + 1] = f.p3.y;
+      aP3[i * 3 + 2] = f.p3.z;
+
+      aColor[i * 3 + 0] = f.color.r;
+      aColor[i * 3 + 1] = f.color.g;
+      aColor[i * 3 + 2] = f.color.b;
+
+      aSeed[i * 3 + 0] = Math.random();
+      aSeed[i * 3 + 1] = 0.14 + Math.random() * 0.28;
+      aSeed[i * 3 + 2] = 0.8 + Math.random() * 1.5;
+    }
+
+    const photonGeo = new THREE.BufferGeometry();
+    photonGeo.setAttribute('position', new THREE.BufferAttribute(aP0, 3));
+    photonGeo.setAttribute('aP1', new THREE.BufferAttribute(aP1, 3));
+    photonGeo.setAttribute('aP2', new THREE.BufferAttribute(aP2, 3));
+    photonGeo.setAttribute('aP3', new THREE.BufferAttribute(aP3, 3));
+    photonGeo.setAttribute('aColor', new THREE.BufferAttribute(aColor, 3));
+    photonGeo.setAttribute('aSeed', new THREE.BufferAttribute(aSeed, 3));
+
+    const photonMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0.0 },
+        uPinchRatio: { value: 0.5 },
+        uPulse: { value: 0.15 },
+        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
+      },
+      vertexShader: /* glsl */ `
+        attribute vec3 aP1;
+        attribute vec3 aP2;
+        attribute vec3 aP3;
+        attribute vec3 aColor;
+        attribute vec3 aSeed;
+
+        uniform float uTime;
+        uniform float uPinchRatio;
+        uniform float uPulse;
+        uniform float uPixelRatio;
+
+        varying vec3 vColor;
+        varying float vCoreHeat;
+
+        vec3 evalBezier(float t, vec3 p0, vec3 p1, vec3 p2, vec3 p3) {
+          float inv = 1.0 - t;
+          return inv * inv * inv * p0 +
+                 3.0 * inv * inv * t * p1 +
+                 3.0 * inv * t * t * p2 +
+                 t * t * t * p3;
+        }
+
+        void main() {
+          float phase = aSeed.x;
+          float speed = aSeed.y * (1.0 + uPulse * 1.4);
+          float t = fract(phase + uTime * speed);
+
+          // Dynamically compress middle control points toward central singularity (0,0,0)
+          float pinchScale = mix(1.3, 0.22, uPinchRatio);
+          vec3 c1 = vec3(aP1.x, aP1.y * pinchScale, aP1.z * pinchScale);
+          vec3 c2 = vec3(aP2.x, aP2.y * pinchScale, aP2.z * pinchScale);
+
+          vec3 pos = evalBezier(t, position, c1, c2, aP3);
+
+          // Intense white-hot compression near singularity t = 0.5
+          float distMid = abs(t - 0.5);
+          vCoreHeat = smoothstep(0.24, 0.0, distMid);
+          vColor = mix(aColor, vec3(1.0, 0.99, 0.94), vCoreHeat * 0.85);
+
+          vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+          gl_PointSize = (1.6 + vCoreHeat * 2.4) * aSeed.z * uPixelRatio * (34.0 / max(10.0, -mvPosition.z));
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec3 vColor;
+        varying float vCoreHeat;
+
+        void main() {
+          vec2 p = gl_PointCoord * 2.0 - 1.0;
+          float r2 = dot(p, p);
+          if (r2 > 1.0) discard;
+
+          float glow = exp(-r2 * 3.5);
+          gl_FragColor = vec4(vColor * (1.15 + vCoreHeat * 0.8), glow * (0.65 + vCoreHeat * 0.35));
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
 
-    // Active Photon Packets flowing along the cubic bezier curves
-    const packets: PhotonPacket[] = Array.from({ length: 140 }, (_, i) => ({
-      filamentIdx: i % filaments.length,
-      t: Math.random(),
-      speed: 0.16 + Math.random() * 0.24,
-      color: filaments[i % filaments.length].color,
-      size: 1.5 + Math.random() * 1.8,
-      highEnergy: i % 9 === 0,
-    }));
+    const photonPoints = new THREE.Points(photonGeo, photonMat);
+    funnelGroup.add(photonPoints);
 
-    // Helper: Evaluate Cubic Bezier at parameter u in [0,1]
-    const evalCubicBezier = (
-      u: number,
-      x0: number,
-      y0: number,
-      x1: number,
-      y1: number,
-      x2: number,
-      y2: number,
-      x3: number,
-      y3: number
-    ) => {
-      const inv = 1 - u;
-      const b0 = inv * inv * inv;
-      const b1 = 3 * inv * inv * u;
-      const b2 = 3 * inv * u * u;
-      const b3 = u * u * u;
-      return {
-        x: b0 * x0 + b1 * x1 + b2 * x2 + b3 * x3,
-        y: b0 * y0 + b1 * y1 + b2 * y2 + b3 * y3,
-      };
+    // -------------------------------------------------------------------------
+    // 3. CENTRAL WHITE-HOT SINGULARITY CORE & SHOCKWAVE RING
+    // -------------------------------------------------------------------------
+    const coreGeo = new THREE.IcosahedronGeometry(1.55, 3);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color('#fff9e6'),
+      wireframe: true,
+      transparent: true,
+      opacity: 0.75,
+    });
+    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    funnelGroup.add(coreMesh);
+
+    const shockGeo = new THREE.RingGeometry(1.6, 2.0, 64);
+    const shockMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color('#00f0ff'),
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+    });
+    const shockMesh = new THREE.Mesh(shockGeo, shockMat);
+    funnelGroup.add(shockMesh);
+
+    // Mouse Parallax Drift
+    let mouseX = 0;
+    let mouseY = 0;
+    const onPointerMove = (e: PointerEvent) => {
+      mouseX = (e.clientX / window.innerWidth - 0.5) * 2.0;
+      mouseY = (e.clientY / window.innerHeight - 0.5) * 2.0;
+      recordInteraction();
     };
+    window.addEventListener('pointermove', onPointerMove);
 
     let rafId = 0;
     let lastFrameTime = performance.now();
@@ -159,10 +288,10 @@ export const View2BookingFunnel: React.FC = () => {
       if (!citadelState.citadelMode || citadelState.targetFps === 0) return;
 
       const minInterval = 1000 / citadelState.targetFps;
-      const elapsedSinceLast = now - lastFrameTime;
-      if (elapsedSinceLast < minInterval - 1) return;
+      const elapsed = now - lastFrameTime;
+      if (elapsed < minInterval - 1) return;
 
-      const dt = Math.min(0.1, elapsedSinceLast / 1000);
+      const dt = Math.min(0.1, elapsed / 1000);
       lastFrameTime = now;
       frameCounter++;
 
@@ -177,192 +306,32 @@ export const View2BookingFunnel: React.FC = () => {
       const snap = computeTelemetrySnapshot();
       const elapsedSec = (now - startTime) * 0.001;
 
-      const W = offscreenCanvas.width;
-      const H = offscreenCanvas.height;
+      // Smooth 3D camera parallax
+      camera.position.x += (mouseX * 9.0 - camera.position.x) * 0.05;
+      camera.position.y += (-mouseY * 6.5 + 1.5 - camera.position.y) * 0.05;
+      camera.lookAt(0, 0, 0);
 
-      ctx.save();
-      ctx.fillStyle = '#030305';
-      ctx.fillRect(0, 0, W, H);
+      photonMat.uniforms.uTime.value = elapsedSec;
+      photonMat.uniforms.uPinchRatio.value = snap.channelFunnelPinchRatio;
+      photonMat.uniforms.uPulse.value = snap.shaderPulseIntensity;
 
-      // Subtle vertical measurement grid hairlines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
-      ctx.lineWidth = 1;
-      for (let gx = 1; gx < 8; gx++) {
-        const xPos = (W / 8) * gx;
-        ctx.beginPath();
-        ctx.moveTo(xPos, 0);
-        ctx.lineTo(xPos, H);
-        ctx.stroke();
-      }
+      coreMesh.rotation.y = elapsedSec * 1.2;
+      coreMesh.rotation.x = elapsedSec * 0.7;
+      const coreScale = 1.0 + Math.sin(elapsedSec * 4.5) * 0.1 + snap.shaderPulseIntensity * 0.45;
+      coreMesh.scale.setScalar(coreScale);
 
-      const leftX = W * 0.11;
-      const centerX = W * 0.5;
-      const centerY = H * 0.5;
-      const rightX = W * 0.88;
-
-      // Dynamic pinch tightness driven by occupancy compression & pulse
-      const pinchTightness = Math.max(0.22, 1.0 - snap.channelFunnelPinchRatio * 0.68);
-
-      // Draw 85 ultra-thin (0.45px logical * dpr) glowing cubic bezier filaments
-      ctx.lineWidth = 0.45 * dpr;
-      for (let i = 0; i < filaments.length; i++) {
-        const f = filaments[i];
-        const yLeft = f.leftYNorm * H;
-        const yMid = centerY + f.pinchOffset * dpr * pinchTightness;
-        const yRight = f.rightYNorm * H;
-
-        ctx.strokeStyle = f.color;
-        ctx.globalAlpha = 0.24 + snap.shaderPulseIntensity * 0.18;
-
-        // Left half: Channel -> Central Singularity Node
-        ctx.beginPath();
-        ctx.moveTo(leftX, yLeft);
-        ctx.bezierCurveTo(
-          leftX + (centerX - leftX) * 0.55,
-          yLeft,
-          centerX - (centerX - leftX) * 0.42,
-          yMid,
-          centerX,
-          yMid
-        );
-        ctx.stroke();
-
-        // Right half: Central Singularity Node -> Floor L1-L6 Slot
-        ctx.beginPath();
-        ctx.moveTo(centerX, yMid);
-        ctx.bezierCurveTo(
-          centerX + (rightX - centerX) * 0.42,
-          yMid,
-          rightX - (rightX - centerX) * 0.55,
-          yRight,
-          rightX,
-          yRight
-        );
-        ctx.stroke();
-      }
-
-      // Update & Render High-Velocity Photon Packets
-      ctx.globalAlpha = 1.0;
-      for (let i = 0; i < packets.length; i++) {
-        const p = packets[i];
-        p.t += dt * p.speed * (1.0 + snap.shaderPulseIntensity * 1.45);
-        if (p.t > 1.0) {
-          p.t -= 1.0;
+      // Shockwave expansion
+      if (shockwaveRef.current > 0) {
+        shockwaveRef.current += dt * 1.8;
+        const s = 1.0 + shockwaveRef.current * 14.0;
+        shockMesh.scale.setScalar(s);
+        shockMat.opacity = Math.max(0, 1.0 - shockwaveRef.current);
+        if (shockwaveRef.current >= 1.0) {
+          shockwaveRef.current = 0;
+          shockMat.opacity = 0;
         }
-
-        const f = filaments[p.filamentIdx];
-        const yLeft = f.leftYNorm * H;
-        const yMid = centerY + f.pinchOffset * dpr * pinchTightness;
-        const yRight = f.rightYNorm * H;
-
-        let pt: { x: number; y: number };
-        if (p.t < 0.5) {
-          const u = p.t * 2.0;
-          pt = evalCubicBezier(
-            u,
-            leftX,
-            yLeft,
-            leftX + (centerX - leftX) * 0.55,
-            yLeft,
-            centerX - (centerX - leftX) * 0.42,
-            yMid,
-            centerX,
-            yMid
-          );
-        } else {
-          const u = (p.t - 0.5) * 2.0;
-          pt = evalCubicBezier(
-            u,
-            centerX,
-            yMid,
-            centerX + (rightX - centerX) * 0.42,
-            yMid,
-            rightX - (rightX - centerX) * 0.55,
-            yRight,
-            rightX,
-            yRight
-          );
-        }
-
-        const distToSingularity = Math.abs(p.t - 0.5);
-        const coreBoost = distToSingularity < 0.08 ? 1.8 : 1.0;
-
-        ctx.fillStyle = distToSingularity < 0.06 ? '#ffffff' : p.color;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, p.size * dpr * coreBoost * 0.55, 0, Math.PI * 2);
-        ctx.fill();
       }
 
-      // Central White-Hot Singularity Node: ERBIL.YIELD.ENGINE // LIVE ALLOCATION
-      const singRadius = (24 + Math.sin(elapsedSec * 4.0) * 3 + snap.shaderPulseIntensity * 18) * dpr;
-      const grad = ctx.createRadialGradient(centerX, centerY, 2 * dpr, centerX, centerY, singRadius * 2.4);
-      grad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
-      grad.addColorStop(0.28, 'rgba(212, 175, 55, 0.72)');
-      grad.addColorStop(0.65, 'rgba(0, 240, 255, 0.18)');
-      grad.addColorStop(1, 'rgba(3, 3, 5, 0.0)');
-
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, singRadius * 2.4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Singularity Precision Reticle Ring
-      ctx.strokeStyle = '#d4af37';
-      ctx.lineWidth = 0.8 * dpr;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, singRadius * 1.15, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.font = `600 ${Math.round(9 * dpr)}px "JetBrains Mono", monospace`;
-      ctx.fillStyle = '#f4f0ea';
-      ctx.textAlign = 'center';
-      ctx.fillText('ERBIL.YIELD.ENGINE // LIVE ALLOCATION', centerX, centerY - singRadius * 1.5);
-      ctx.fillStyle = '#d4af37';
-      ctx.fillText(
-        `PINCH RATIO: ${snap.channelFunnelPinchRatio.toFixed(3)} // ADR: ${snap.adrIqd.toLocaleString()} IQD`,
-        centerX,
-        centerY + singRadius * 1.65
-      );
-
-      // Left Demand Source Nodes
-      ctx.textAlign = 'right';
-      CHANNELS.forEach((ch) => {
-        const cy = ch.yNorm * H;
-        ctx.fillStyle = ch.color;
-        ctx.beginPath();
-        ctx.arc(leftX, cy, 3.5 * dpr, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#f4f0ea';
-        ctx.font = `600 ${Math.round(9.5 * dpr)}px "JetBrains Mono", monospace`;
-        ctx.fillText(ch.name.toUpperCase(), leftX - 10 * dpr, cy + 3 * dpr);
-      });
-
-      // Right Floor L1-L6 Inventory Nodes
-      ctx.textAlign = 'left';
-      for (let fIdx = 0; fIdx < 6; fIdx++) {
-        const floorNum = fIdx + 1;
-        const fy = (0.14 + fIdx * 0.142) * H;
-        const floorRooms = snap.roomNodes.filter((r) => r.floor === floorNum);
-        const occ = floorRooms.filter((r) => r.occupancyStatus === 'occupied').length;
-        const rdy = floorRooms.filter(isRoomReady).length;
-
-        ctx.fillStyle = '#00e676';
-        ctx.beginPath();
-        ctx.arc(rightX, fy, 3.5 * dpr, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#f4f0ea';
-        ctx.font = `600 ${Math.round(9.5 * dpr)}px "JetBrains Mono", monospace`;
-        ctx.fillText(`FLOOR L${floorNum} [${occ}/8 OCC]`, rightX + 10 * dpr, fy - 1 * dpr);
-        ctx.fillStyle = '#00e676';
-        ctx.font = `400 ${Math.round(8.5 * dpr)}px "JetBrains Mono", monospace`;
-        ctx.fillText(`READY SLOTS: ${rdy}`, rightX + 10 * dpr, fy + 11 * dpr);
-      }
-
-      ctx.restore();
-
-      canvasTexture.needsUpdate = true;
       postProcessor.update(elapsedSec, snap.shaderPulseIntensity);
     };
 
@@ -372,8 +341,8 @@ export const View2BookingFunnel: React.FC = () => {
       if (!container) return;
       const nw = container.clientWidth || window.innerWidth;
       const nh = container.clientHeight || window.innerHeight;
-      offscreenCanvas.width = Math.floor(nw * dpr);
-      offscreenCanvas.height = Math.floor(nh * dpr);
+      camera.aspect = nw / nh;
+      camera.updateProjectionMatrix();
       renderer.setSize(nw, nh);
       postProcessor.setSize(nw, nh);
     };
@@ -381,42 +350,72 @@ export const View2BookingFunnel: React.FC = () => {
 
     return () => {
       cancelAnimationFrame(rafId);
+      window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('resize', handleResize);
-      canvasTexture.dispose();
       disposeThreeContextComplete(scene, renderer, postProcessor);
     };
-  }, []);
+  }, [recordInteraction]);
 
   return (
-    <div
-      onMouseMove={recordInteraction}
-      className="relative w-full h-full bg-[#030305] overflow-hidden select-none"
-    >
+    <div className="relative w-full h-full bg-[#030305] overflow-hidden select-none">
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Top HUD Overlay */}
-      <div className="absolute top-3 left-3 pointer-events-none font-mono space-y-1">
-        <div className="text-[9px] tracking-[0.18em] text-[#686875] uppercase">
-          VIEW 02 // NEURAL FUNNEL: RESERVATION & YIELD COMPILER (85 CUBIC BEZIER FILAMENTS @ 0.45PX)
+      {/* Top-Left Telemetry Overlay */}
+      <div className="absolute top-20 left-6 pointer-events-none hud-glass rounded-2xl px-4 py-3 space-y-1">
+        <div className="font-mono text-[10px] tracking-[0.2em] text-[#d4af37] uppercase">
+          VIEW 02 // NEURAL FUNNEL • 3D GPU SANKEY & 15,000 PHOTON COMPILER
         </div>
-        <div className="flex items-center gap-4 text-[11px] tabular-nums">
-          <span className="text-[#d4af37]">
-            REVPAR: {telemetry.revParIqd.toLocaleString()} IQD (${telemetry.revParUsd})
+        <div className="flex items-center gap-4 font-mono text-xs tabular-nums">
+          <span className="text-white/90">
+            REVPAR: <strong className="text-[#d4af37]">{telemetry.revParIqd.toLocaleString()} IQD</strong>
           </span>
           <span className="text-[#00f0ff]">
             PINCH RATIO: {telemetry.channelFunnelPinchRatio.toFixed(3)}
           </span>
-          <span className="text-[#00e676]">READY INVENTORY: {telemetry.readyRooms} SUITES</span>
+          <span className="text-[#00e676]">READY SUITES: {telemetry.readyRooms}</span>
         </div>
       </div>
 
-      {/* Interactive Live Booking Photon Trigger Button */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-2 font-mono text-[10px]">
+      {/* Left Channel Labels */}
+      <div className="absolute left-6 top-1/2 -translate-y-1/2 space-y-5 pointer-events-none hidden lg:block">
+        {CHANNELS.map((ch) => (
+          <div key={ch.name} className="flex items-center gap-2.5 font-mono text-[10px]">
+            <span
+              className="w-2.5 h-2.5 rounded-full"
+              style={{ backgroundColor: ch.color, boxShadow: `0 0 12px ${ch.color}` }}
+            />
+            <span className="text-white/80 tracking-wider">{ch.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Right Floor Inventory Labels */}
+      <div className="absolute right-6 top-1/2 -translate-y-1/2 space-y-4 pointer-events-none hidden lg:block">
+        {[1, 2, 3, 4, 5, 6].map((fl) => {
+          const flRooms = rooms.filter((r) => r.floor === fl);
+          const occ = flRooms.filter((r) => r.occupancyStatus === 'occupied').length;
+          const rdy = flRooms.filter(isRoomReady).length;
+          return (
+            <div
+              key={fl}
+              className="hud-glass rounded-xl px-3 py-1.5 font-mono text-[10px] text-right tabular-nums"
+            >
+              <div className="text-white font-semibold">
+                FLOOR L{fl} • <span className="text-[#00f0ff]">{occ}/8 OCC</span>
+              </div>
+              <div className="text-[#00e676] text-[9px]">{rdy} READY SLOTS</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Interactive Shockwave Booking Trigger */}
+      <div className="absolute bottom-36 right-6">
         <button
-          onClick={triggerSimulatedBookingPulse}
-          className="px-3.5 py-2 bg-[#08080e] hover:bg-[#d4af37] text-[#d4af37] hover:text-[#030305] border border-[#d4af37] font-bold uppercase tracking-[0.14em] transition"
+          onClick={triggerBookingShockwave}
+          className="px-5 py-2.5 rounded-full hud-glass border border-[#d4af37]/60 hover:bg-[#d4af37] text-[#d4af37] hover:text-[#030305] font-mono text-xs font-semibold uppercase tracking-[0.14em] shadow-[0_0_30px_rgba(212,175,55,0.25)] transition"
         >
-          ⚡ FIRE LIVE BOOKING PHOTON BURST ({telemetry.readyRooms} READY)
+          ⚡ Fire Live Booking Shockwave ({telemetry.readyRooms} Ready)
         </button>
       </div>
     </div>
