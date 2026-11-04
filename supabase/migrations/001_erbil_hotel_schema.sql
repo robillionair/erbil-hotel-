@@ -1,11 +1,8 @@
 -- =============================================================================
 -- ERBIL HOTEL OPERATIONS // CITADEL TELEMETRY & LUXURY PORTAL
--- COMPLETE SUPABASE SCHEMA MIGRATION: 001_erbil_hotel_schema.sql
--- Location: Salem Street, Sulaymaniyah / Erbil Architectural Citadel Operations
+-- COMPLETE IDEMPOTENT SUPABASE SCHEMA MIGRATION: 001_erbil_hotel_schema.sql
+-- Safe to run multiple times in Supabase SQL Editor with zero errors
 -- =============================================================================
-
--- Enable UUID generation
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- -----------------------------------------------------------------------------
 -- 1. PROFILES TABLE (Bound to auth.users via Trigger)
@@ -22,7 +19,6 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Trigger function to automatically create a profile when a user signs up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -32,10 +28,14 @@ BEGIN
   INSERT INTO public.profiles (id, email, full_name, phone, role)
   VALUES (
     NEW.id,
-    COALESCE(NEW.email, 'guest@erbilhotel.iq'),
+    COALESCE(NEW.email, 'guest_' || NEW.id::text || '@erbilhotel.iq'),
     COALESCE(NEW.raw_user_meta_data->>'full_name', 'Valued Guest'),
     COALESCE(NEW.raw_user_meta_data->>'phone', '+964 774 115 0101'),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'guest')
+    CASE
+      WHEN (NEW.raw_user_meta_data->>'role') IN ('guest', 'front_desk', 'housekeeping', 'executive')
+      THEN NEW.raw_user_meta_data->>'role'
+      ELSE 'guest'
+    END
   )
   ON CONFLICT (id) DO UPDATE SET
     full_name = EXCLUDED.full_name,
@@ -53,12 +53,9 @@ CREATE TRIGGER on_auth_user_created
 
 -- -----------------------------------------------------------------------------
 -- 2. ROOMS TABLE (48 Suites & Rooms across Floors L1-L6)
--- Strict Separation of Statuses:
--- READY RULE: occupancy_status='vacant' AND housekeeping_status='clean'
---             AND inspection_status='passed' AND maintenance_status='in_service'
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.rooms (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   room_number TEXT UNIQUE NOT NULL,
   floor INTEGER NOT NULL CHECK (floor BETWEEN 1 AND 10),
   floor_zone TEXT NOT NULL DEFAULT 'FLOOR_01_LOBBY',
@@ -81,17 +78,21 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Computed helper view or function for Ready status
-CREATE OR REPLACE FUNCTION public.is_room_ready(r public.rooms)
+CREATE OR REPLACE FUNCTION public.is_room_ready(
+  p_occupancy TEXT,
+  p_housekeeping TEXT,
+  p_inspection TEXT,
+  p_maintenance TEXT
+)
 RETURNS BOOLEAN
 LANGUAGE sql
 IMMUTABLE
 AS $$
   SELECT (
-    r.occupancy_status = 'vacant'
-    AND r.housekeeping_status = 'clean'
-    AND r.inspection_status = 'passed'
-    AND r.maintenance_status = 'in_service'
+    p_occupancy = 'vacant'
+    AND p_housekeeping = 'clean'
+    AND p_inspection = 'passed'
+    AND p_maintenance = 'in_service'
   );
 $$;
 
@@ -99,7 +100,7 @@ $$;
 -- 3. RESERVATIONS & STAYS TABLE
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.reservations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_ref TEXT UNIQUE NOT NULL,
   room_id UUID REFERENCES public.rooms(id) ON DELETE SET NULL,
   room_number TEXT NOT NULL,
@@ -127,7 +128,7 @@ CREATE TABLE IF NOT EXISTS public.reservations (
 -- 4. HOUSEKEEPING TASKS TABLE
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.housekeeping_tasks (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id UUID REFERENCES public.rooms(id) ON DELETE CASCADE,
   room_number TEXT NOT NULL,
   floor INTEGER NOT NULL,
@@ -143,10 +144,9 @@ CREATE TABLE IF NOT EXISTS public.housekeeping_tasks (
 
 -- -----------------------------------------------------------------------------
 -- 5. MAINTENANCE LOGS TABLE
--- Big-button workflow: working_on_it | fixed (awaits supervisor check) | out_of_service | needs_parts | checked_ok
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.maintenance_logs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id UUID REFERENCES public.rooms(id) ON DELETE CASCADE,
   room_number TEXT NOT NULL,
   floor INTEGER NOT NULL,
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS public.maintenance_logs (
 -- 6. ROOM SERVICE ORDERS TABLE
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.room_service_orders (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   room_number TEXT NOT NULL,
   floor INTEGER NOT NULL,
   guest_name TEXT NOT NULL,
@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS public.room_service_orders (
 );
 
 -- -----------------------------------------------------------------------------
--- 7. ROW-LEVEL SECURITY (RLS) POLICIES
+-- 7. ROW-LEVEL SECURITY (RLS) POLICIES (Idempotent DROP IF EXISTS + CREATE)
 -- -----------------------------------------------------------------------------
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
@@ -185,82 +185,100 @@ ALTER TABLE public.housekeeping_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.maintenance_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.room_service_orders ENABLE ROW LEVEL SECURITY;
 
--- Profiles: Users can read all profiles in operational context or update their own
+DROP POLICY IF EXISTS "Public profiles are viewable by authenticated users" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by authenticated users"
   ON public.profiles FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
 CREATE POLICY "Users can insert their own profile"
   ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
--- Rooms: Viewable by everyone (for availability), mutable by authenticated staff/guests
+DROP POLICY IF EXISTS "Rooms viewable by all" ON public.rooms;
 CREATE POLICY "Rooms viewable by all"
   ON public.rooms FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Rooms insertable by all" ON public.rooms;
+CREATE POLICY "Rooms insertable by all"
+  ON public.rooms FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Rooms updatable by authenticated users" ON public.rooms;
 CREATE POLICY "Rooms updatable by authenticated users"
   ON public.rooms FOR UPDATE USING (true);
 
--- Reservations: Viewable and insertable
+DROP POLICY IF EXISTS "Reservations viewable by authenticated" ON public.reservations;
 CREATE POLICY "Reservations viewable by authenticated"
   ON public.reservations FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Reservations insertable by all" ON public.reservations;
 CREATE POLICY "Reservations insertable by all"
   ON public.reservations FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Reservations updatable by authenticated" ON public.reservations;
 CREATE POLICY "Reservations updatable by authenticated"
   ON public.reservations FOR UPDATE USING (true);
 
--- Housekeeping Tasks
+DROP POLICY IF EXISTS "Housekeeping viewable by all" ON public.housekeeping_tasks;
 CREATE POLICY "Housekeeping viewable by all"
   ON public.housekeeping_tasks FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Housekeeping insertable by all" ON public.housekeeping_tasks;
 CREATE POLICY "Housekeeping insertable by all"
   ON public.housekeeping_tasks FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Housekeeping updatable by all" ON public.housekeeping_tasks;
 CREATE POLICY "Housekeeping updatable by all"
   ON public.housekeeping_tasks FOR UPDATE USING (true);
 
--- Maintenance Logs
+DROP POLICY IF EXISTS "Maintenance viewable by all" ON public.maintenance_logs;
 CREATE POLICY "Maintenance viewable by all"
   ON public.maintenance_logs FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Maintenance insertable by all" ON public.maintenance_logs;
 CREATE POLICY "Maintenance insertable by all"
   ON public.maintenance_logs FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Maintenance updatable by all" ON public.maintenance_logs;
 CREATE POLICY "Maintenance updatable by all"
   ON public.maintenance_logs FOR UPDATE USING (true);
 
--- Room Service Orders
+DROP POLICY IF EXISTS "Room service viewable by all" ON public.room_service_orders;
 CREATE POLICY "Room service viewable by all"
   ON public.room_service_orders FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Room service insertable by all" ON public.room_service_orders;
 CREATE POLICY "Room service insertable by all"
   ON public.room_service_orders FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Room service updatable by all" ON public.room_service_orders;
 CREATE POLICY "Room service updatable by all"
   ON public.room_service_orders FOR UPDATE USING (true);
 
 -- -----------------------------------------------------------------------------
--- 8. REALTIME PUBLICATION CONFIGURATION
+-- 8. REALTIME PUBLICATION CONFIGURATION (Safe per-table checks)
 -- -----------------------------------------------------------------------------
 DO $$
+DECLARE
+  t TEXT;
 BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.rooms;
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.reservations;
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.housekeeping_tasks;
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.maintenance_logs;
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.room_service_orders;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    FOREACH t IN ARRAY ARRAY['profiles', 'rooms', 'reservations', 'housekeeping_tasks', 'maintenance_logs', 'room_service_orders']
+    LOOP
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = t
+      ) THEN
+        EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', t);
+      END IF;
+    END LOOP;
+  END IF;
 END $$;
 
 -- -----------------------------------------------------------------------------
 -- 9. INITIAL SEED DATA: 48 ERBIL HOTEL ROOMS ACROSS 6 FLOORS (L1 - L6)
--- 8 rooms per floor (101-108, 201-208, 301-308, 401-408, 501-508, 601-608)
--- Standard owner rate: 100,000 IQD ($76.34 USD at 1,310 IQD/USD)
 -- -----------------------------------------------------------------------------
 INSERT INTO public.rooms (
   room_number, floor, floor_zone, room_type, base_rate_iqd, base_rate_usd,
@@ -327,4 +345,11 @@ INSERT INTO public.rooms (
   ('606', 6, 'FLOOR_06_PENTHOUSE', 'Twin', 100000, 76.34, 'vacant', 'clean', 'passed', 'in_service', false, 21.0, false, NULL, NULL, NULL, NULL, 100),
   ('607', 6, 'FLOOR_06_PENTHOUSE', 'Executive Suite', 150000, 114.50, 'occupied', 'clean', 'passed', 'in_service', true, 20.4, true, 'Aria Rostami', '+964 770 219 8840', 'IRQ-SLM-21988', 'SLM 7711', 100),
   ('608', 6, 'FLOOR_06_PENTHOUSE', 'Royal Penthouse', 350000, 267.18, 'vacant', 'clean', 'passed', 'in_service', true, 20.0, false, NULL, NULL, NULL, NULL, 100)
-ON CONFLICT (room_number) DO NOTHING;
+ON CONFLICT (room_number) DO UPDATE SET
+  floor = EXCLUDED.floor,
+  floor_zone = EXCLUDED.floor_zone,
+  room_type = EXCLUDED.room_type,
+  base_rate_iqd = EXCLUDED.base_rate_iqd,
+  base_rate_usd = EXCLUDED.base_rate_usd,
+  is_vip = EXCLUDED.is_vip,
+  updated_at = NOW();
